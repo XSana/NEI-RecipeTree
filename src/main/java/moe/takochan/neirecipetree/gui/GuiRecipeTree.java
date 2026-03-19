@@ -265,6 +265,9 @@ public class GuiRecipeTree extends GuiScreen {
                 drawCostTooltip(hoveredCost, mouseX, mouseY);
             }
         }
+
+        // Draw buttons (super.drawScreen renders buttonList)
+        super.drawScreen(mouseX, mouseY, partialTicks);
     }
 
     private void drawNodeTooltip(TreeNode treeNode, int mouseX, int mouseY) {

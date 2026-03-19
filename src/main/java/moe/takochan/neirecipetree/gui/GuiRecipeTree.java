@@ -53,6 +53,9 @@ public class GuiRecipeTree extends GuiScreen {
 
     private final GuiScreen parentScreen;
 
+    // Export to bookmarks button
+    private GuiRecipeTreeButton exportButton;
+
     public GuiRecipeTree(GuiScreen parent) {
         this.parentScreen = parent;
     }
@@ -64,6 +67,12 @@ public class GuiRecipeTree extends GuiScreen {
             offY = height / -3.0;
         }
         recalculateTree();
+
+        // Add export to bookmarks button (top-right corner)
+        int buttonX = width - 22;
+        int buttonY = 4;
+        exportButton = new GuiRecipeTreeButton(buttonX, buttonY);
+        buttonList.add(exportButton);
     }
 
     private void recalculateTree() {
@@ -587,9 +596,6 @@ public class GuiRecipeTree extends GuiScreen {
                 // Delete: reset all resolutions (keep root recipe)
                 resetTree();
             }
-        } else if (keyCode == 48) { // B key
-            // Export current tree to NEI bookmarks
-            exportToBookmarks();
         }
     }
 
@@ -665,6 +671,93 @@ public class GuiRecipeTree extends GuiScreen {
     @Override
     public boolean doesGuiPauseGame() {
         return false;
+    }
+
+    /**
+     * Simple button for exporting recipe tree to NEI bookmarks.
+     */
+    public static class GuiRecipeTreeButton extends codechicken.nei.GuiNEIButton {
+
+        public GuiRecipeTreeButton(int x, int y) {
+            super(-1, x, y, 16, 16, "B");
+        }
+
+        @Override
+        public void drawButton(net.minecraft.client.Minecraft mc, int mouseX, int mouseY) {
+            // Draw button background using GuiDraw from codechicken.lib.gui
+            int bgColor = 0xFF333333;
+            boolean hovered = mouseX >= xPosition && mouseX < xPosition + width
+                && mouseY >= yPosition
+                && mouseY < yPosition + height;
+            int borderColor = hovered ? 0xFFAAAAAA : 0xFF555555;
+
+            codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, width, height, bgColor);
+            codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, width, 1, borderColor);
+            codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition + height - 1, width, 1, borderColor);
+            codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, 1, height, borderColor);
+            codechicken.lib.gui.GuiDraw.drawRect(xPosition + width - 1, yPosition, 1, height, borderColor);
+
+            // Draw "B" text centered
+            String text = "B";
+            int textX = xPosition + (width - mc.fontRenderer.getStringWidth(text)) / 2;
+            int textY = yPosition + (height - mc.fontRenderer.FONT_HEIGHT) / 2;
+            mc.fontRenderer.drawStringWithShadow(text, textX, textY, 0xFFFFFFFF);
+        }
+
+        @Override
+        public boolean mousePressed(net.minecraft.client.Minecraft mc, int mouseX, int mouseY) {
+            if (super.mousePressed(mc, mouseX, mouseY)) {
+                exportToBookmarks();
+                return true;
+            }
+            return false;
+        }
+
+        private void exportToBookmarks() {
+            if (BoM.tree == null) return;
+
+            List<Recipe> recipes = collectAllRecipes(BoM.tree.goal);
+            if (recipes.isEmpty()) return;
+
+            boolean added = ItemPanels.bookmarkPanel.addGroup(recipes, null, true);
+            if (added) {
+                ItemPanels.bookmarkPanel.save();
+                net.minecraft.client.Minecraft.getMinecraft().ingameGUI.getChatGUI()
+                    .printChatMessage(
+                        new net.minecraft.util.ChatComponentText(
+                            "\u00a7a[RecipeTree] " + net.minecraft.util.StatCollector
+                                .translateToLocal("neirecipetree.chat.bookmark_added")));
+            }
+        }
+
+        private List<Recipe> collectAllRecipes(moe.takochan.neirecipetree.bom.MaterialNode node) {
+            List<Recipe> recipes = new ArrayList<>();
+            collectRecipesRecursive(node, recipes, new HashSet<>());
+            return recipes;
+        }
+
+        private void collectRecipesRecursive(moe.takochan.neirecipetree.bom.MaterialNode node, List<Recipe> recipes,
+            Set<moe.takochan.neirecipetree.recipe.NEIRecipeRef> visited) {
+            if (node == null || node.recipe == null) return;
+            if (!visited.add(node.recipe)) return;
+            Recipe recipe = Recipe.of(node.recipe.handler, node.recipe.recipeIndex);
+            if (recipe != null) {
+                recipes.add(recipe);
+            }
+            if (node.children != null) {
+                for (moe.takochan.neirecipetree.bom.MaterialNode child : node.children) {
+                    if (!child.catalyst) {
+                        collectRecipesRecursive(child, recipes, visited);
+                    }
+                }
+            }
+        }
+
+        public List<String> getToolTip() {
+            List<String> tooltip = new ArrayList<>();
+            tooltip.add(net.minecraft.util.StatCollector.translateToLocal("neirecipetree.button.bookmark.tooltip"));
+            return tooltip;
+        }
     }
 
     public static class CostEntry {

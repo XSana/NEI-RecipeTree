@@ -2,8 +2,10 @@ package moe.takochan.neirecipetree.gui;
 
 import java.awt.Dimension;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
@@ -14,6 +16,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Mouse;
 
+import codechicken.nei.ItemPanels;
 import codechicken.nei.recipe.GuiCraftingRecipe;
 import codechicken.nei.recipe.Recipe;
 import codechicken.nei.recipe.RecipeTooltipLineHandler;
@@ -584,6 +587,9 @@ public class GuiRecipeTree extends GuiScreen {
                 // Delete: reset all resolutions (keep root recipe)
                 resetTree();
             }
+        } else if (keyCode == 48) { // B key
+            // Export current tree to NEI bookmarks
+            exportToBookmarks();
         }
     }
 
@@ -602,6 +608,58 @@ public class GuiRecipeTree extends GuiScreen {
             }
         }
         recalculateTree();
+    }
+
+    /**
+     * Export current recipe tree to NEI bookmarks as a crafting chain.
+     * Uses ItemPanels.bookmarkPanel.addGroup() to add all recipes in the tree.
+     */
+    private void exportToBookmarks() {
+        if (BoM.tree == null) return;
+
+        List<Recipe> recipes = collectAllRecipes(BoM.tree.goal);
+        if (recipes.isEmpty()) return;
+
+        boolean added = ItemPanels.bookmarkPanel.addGroup(recipes, null, true);
+        if (added) {
+            ItemPanels.bookmarkPanel.save();
+            // Show feedback message
+            mc.ingameGUI.getChatGUI()
+                .printChatMessage(
+                    new net.minecraft.util.ChatComponentText(
+                        "\u00a7a[RecipeTree] " + StatCollector.translateToLocal("neirecipetree.chat.bookmark_added")));
+        }
+    }
+
+    /**
+     * Recursively collect all recipes from the material node tree.
+     */
+    private List<Recipe> collectAllRecipes(MaterialNode node) {
+        List<Recipe> recipes = new ArrayList<>();
+        collectRecipesRecursive(node, recipes, new HashSet<>());
+        return recipes;
+    }
+
+    private void collectRecipesRecursive(MaterialNode node, List<Recipe> recipes, Set<NEIRecipeRef> visited) {
+        if (node == null || node.recipe == null) return;
+
+        // Avoid cycles
+        if (!visited.add(node.recipe)) return;
+
+        // Convert NEIRecipeRef to codechicken.nei.recipe.Recipe
+        Recipe recipe = Recipe.of(node.recipe.handler, node.recipe.recipeIndex);
+        if (recipe != null) {
+            recipes.add(recipe);
+        }
+
+        // Recurse into children
+        if (node.children != null) {
+            for (MaterialNode child : node.children) {
+                if (!child.catalyst) {
+                    collectRecipesRecursive(child, recipes, visited);
+                }
+            }
+        }
     }
 
     @Override

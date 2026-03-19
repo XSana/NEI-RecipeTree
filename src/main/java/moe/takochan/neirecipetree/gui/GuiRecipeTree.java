@@ -646,8 +646,11 @@ public class GuiRecipeTree extends GuiScreen {
             codechicken.nei.bookmark.BookmarkGrid grid = (codechicken.nei.bookmark.BookmarkGrid) gridField
                 .get(ItemPanels.bookmarkPanel);
 
-            // Create a new bookmark group
-            int groupId = grid.addGroup(new codechicken.nei.bookmark.BookmarkGroup(null, true));
+            // Create a new bookmark group with DEFAULT view mode and crafting enabled
+            int groupId = grid.addGroup(
+                new codechicken.nei.bookmark.BookmarkGroup(
+                    codechicken.nei.BookmarkPanel.BookmarkViewMode.DEFAULT,
+                    true));
 
             // Add all items to the group
             for (codechicken.nei.bookmark.BookmarkItem item : bookmarkItems) {

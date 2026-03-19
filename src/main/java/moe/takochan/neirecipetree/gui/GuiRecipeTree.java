@@ -626,43 +626,53 @@ public class GuiRecipeTree extends GuiScreen {
 
     /**
      * Export current recipe tree to NEI bookmarks as a crafting chain.
-     * Uses ItemPanels.bookmarkPanel.addGroup() to add all recipes in the tree.
+     * All recipes are added to a single group so NEI can compute the crafting chain.
      */
     private void exportToBookmarks() {
         if (BoM.tree == null) return;
 
-        exportNodeToBookmarks(BoM.tree.goal, new HashSet<>());
+        // Collect all recipes from the tree into a single list
+        List<Recipe> allRecipes = new ArrayList<>();
+        collectRecipesToExport(BoM.tree.goal, allRecipes, new HashSet<>());
+
+        if (allRecipes.isEmpty()) return;
+
+        // Add all recipes to a single bookmark group with crafting enabled
+        // NEI will compute the crafting chain automatically
+        boolean added = ItemPanels.bookmarkPanel.addGroup(allRecipes, null, true);
+        if (added) {
+            ItemPanels.bookmarkPanel.save();
+            mc.ingameGUI.getChatGUI()
+                .printChatMessage(
+                    new net.minecraft.util.ChatComponentText(
+                        "\u00a7a[RecipeTree] " + StatCollector.translateToLocal("neirecipetree.chat.bookmark_added")));
+        }
     }
 
     /**
-     * Recursively export each node's recipe as a separate bookmark group.
-     * Creates a hierarchical structure where each recipe is its own group.
+     * Recursively collect all recipes from the material node tree for export.
+     * Only non-catalyst nodes are exported.
      */
-    private void exportNodeToBookmarks(MaterialNode node, Set<NEIRecipeRef> visited) {
+    private void collectRecipesToExport(MaterialNode node, List<Recipe> recipes, Set<NEIRecipeRef> visited) {
         if (node == null || node.recipe == null) return;
 
         // Avoid cycles
         if (!visited.add(node.recipe)) return;
 
-        // Export this node's recipe as a single-item group
+        // Add this node's recipe
         Recipe recipe = Recipe.of(node.recipe.handler, node.recipe.recipeIndex);
         if (recipe != null) {
-            List<Recipe> singleRecipe = new ArrayList<>();
-            singleRecipe.add(recipe);
-            ItemPanels.bookmarkPanel.addGroup(singleRecipe, null, true);
+            recipes.add(recipe);
         }
 
         // Recurse into children (non-catalyst only)
         if (node.children != null) {
             for (MaterialNode child : node.children) {
                 if (!child.catalyst) {
-                    exportNodeToBookmarks(child, visited);
+                    collectRecipesToExport(child, recipes, visited);
                 }
             }
         }
-
-        // Save after exporting this node and all children
-        ItemPanels.bookmarkPanel.save();
     }
 
     @Override

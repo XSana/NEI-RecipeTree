@@ -71,7 +71,7 @@ public class GuiRecipeTree extends GuiScreen {
         // Add export to bookmarks button (top-right corner)
         int buttonX = width - 22;
         int buttonY = 4;
-        exportButton = new GuiRecipeTreeButton(buttonX, buttonY);
+        exportButton = new GuiRecipeTreeButton(buttonX, buttonY, this::exportToBookmarks);
         buttonList.add(exportButton);
     }
 
@@ -469,6 +469,11 @@ public class GuiRecipeTree extends GuiScreen {
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
+        // Check if any button was clicked first
+        if (exportButton != null && exportButton.mousePressed(mc, mouseX, mouseY)) {
+            return;
+        }
+
         if (hoveredNode != null) {
             MaterialNode mn = hoveredNode.materialNode;
 
@@ -632,7 +637,6 @@ public class GuiRecipeTree extends GuiScreen {
         boolean added = ItemPanels.bookmarkPanel.addGroup(recipes, null, true);
         if (added) {
             ItemPanels.bookmarkPanel.save();
-            // Show feedback message
             mc.ingameGUI.getChatGUI()
                 .printChatMessage(
                     new net.minecraft.util.ChatComponentText(
@@ -681,8 +685,11 @@ public class GuiRecipeTree extends GuiScreen {
      */
     public static class GuiRecipeTreeButton extends codechicken.nei.GuiNEIButton {
 
-        public GuiRecipeTreeButton(int x, int y) {
+        private final Runnable onExport;
+
+        public GuiRecipeTreeButton(int x, int y, Runnable onExport) {
             super(-1, x, y, 16, 16, "B");
+            this.onExport = onExport;
         }
 
         @Override
@@ -710,50 +717,10 @@ public class GuiRecipeTree extends GuiScreen {
         @Override
         public boolean mousePressed(net.minecraft.client.Minecraft mc, int mouseX, int mouseY) {
             if (super.mousePressed(mc, mouseX, mouseY)) {
-                exportToBookmarks();
+                onExport.run();
                 return true;
             }
             return false;
-        }
-
-        private void exportToBookmarks() {
-            if (BoM.tree == null) return;
-
-            List<Recipe> recipes = collectAllRecipes(BoM.tree.goal);
-            if (recipes.isEmpty()) return;
-
-            boolean added = ItemPanels.bookmarkPanel.addGroup(recipes, null, true);
-            if (added) {
-                ItemPanels.bookmarkPanel.save();
-                net.minecraft.client.Minecraft.getMinecraft().ingameGUI.getChatGUI()
-                    .printChatMessage(
-                        new net.minecraft.util.ChatComponentText(
-                            "\u00a7a[RecipeTree] " + net.minecraft.util.StatCollector
-                                .translateToLocal("neirecipetree.chat.bookmark_added")));
-            }
-        }
-
-        private List<Recipe> collectAllRecipes(moe.takochan.neirecipetree.bom.MaterialNode node) {
-            List<Recipe> recipes = new ArrayList<>();
-            collectRecipesRecursive(node, recipes, new HashSet<>());
-            return recipes;
-        }
-
-        private void collectRecipesRecursive(moe.takochan.neirecipetree.bom.MaterialNode node, List<Recipe> recipes,
-            Set<moe.takochan.neirecipetree.recipe.NEIRecipeRef> visited) {
-            if (node == null || node.recipe == null) return;
-            if (!visited.add(node.recipe)) return;
-            Recipe recipe = Recipe.of(node.recipe.handler, node.recipe.recipeIndex);
-            if (recipe != null) {
-                recipes.add(recipe);
-            }
-            if (node.children != null) {
-                for (moe.takochan.neirecipetree.bom.MaterialNode child : node.children) {
-                    if (!child.catalyst) {
-                        collectRecipesRecursive(child, recipes, visited);
-                    }
-                }
-            }
         }
 
         public List<String> getToolTip() {

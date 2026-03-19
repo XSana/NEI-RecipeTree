@@ -485,6 +485,9 @@ public class GuiRecipeTree extends GuiScreen {
         if (exportButton != null && exportButton.mousePressed(mc, mouseX, mouseY)) {
             return;
         }
+        if (exportImageButton != null && exportImageButton.mousePressed(mc, mouseX, mouseY)) {
+            return;
+        }
 
         if (hoveredNode != null) {
             MaterialNode mn = hoveredNode.materialNode;
@@ -746,8 +749,9 @@ public class GuiRecipeTree extends GuiScreen {
 
             g2d.dispose();
 
-            // Save to file
-            File screenshotsDir = new File("screenshots");
+            // Save to screenshots folder in Minecraft directory
+            File mcDir = mc.mcDataDir;
+            File screenshotsDir = new File(mcDir, "screenshots/recipe_trees");
             if (!screenshotsDir.exists()) {
                 screenshotsDir.mkdirs();
             }
@@ -757,7 +761,8 @@ public class GuiRecipeTree extends GuiScreen {
 
             mc.ingameGUI.getChatGUI()
                 .printChatMessage(
-                    new net.minecraft.util.ChatComponentText("\u00a7a[RecipeTree] Saved to " + outputFile.getName()));
+                    new net.minecraft.util.ChatComponentText(
+                        "\u00a7a[RecipeTree] Saved to screenshots/recipe_trees/" + outputFile.getName()));
         } catch (Exception e) {
             LOG.error("Failed to export recipe tree to image", e);
             mc.ingameGUI.getChatGUI()

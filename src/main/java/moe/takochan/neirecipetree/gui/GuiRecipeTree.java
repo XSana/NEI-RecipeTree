@@ -631,48 +631,38 @@ public class GuiRecipeTree extends GuiScreen {
     private void exportToBookmarks() {
         if (BoM.tree == null) return;
 
-        List<Recipe> recipes = collectAllRecipes(BoM.tree.goal);
-        if (recipes.isEmpty()) return;
-
-        boolean added = ItemPanels.bookmarkPanel.addGroup(recipes, null, true);
-        if (added) {
-            ItemPanels.bookmarkPanel.save();
-            mc.ingameGUI.getChatGUI()
-                .printChatMessage(
-                    new net.minecraft.util.ChatComponentText(
-                        "\u00a7a[RecipeTree] " + StatCollector.translateToLocal("neirecipetree.chat.bookmark_added")));
-        }
+        exportNodeToBookmarks(BoM.tree.goal, new HashSet<>());
     }
 
     /**
-     * Recursively collect all recipes from the material node tree.
+     * Recursively export each node's recipe as a separate bookmark group.
+     * Creates a hierarchical structure where each recipe is its own group.
      */
-    private List<Recipe> collectAllRecipes(MaterialNode node) {
-        List<Recipe> recipes = new ArrayList<>();
-        collectRecipesRecursive(node, recipes, new HashSet<>());
-        return recipes;
-    }
-
-    private void collectRecipesRecursive(MaterialNode node, List<Recipe> recipes, Set<NEIRecipeRef> visited) {
+    private void exportNodeToBookmarks(MaterialNode node, Set<NEIRecipeRef> visited) {
         if (node == null || node.recipe == null) return;
 
         // Avoid cycles
         if (!visited.add(node.recipe)) return;
 
-        // Convert NEIRecipeRef to codechicken.nei.recipe.Recipe
+        // Export this node's recipe as a single-item group
         Recipe recipe = Recipe.of(node.recipe.handler, node.recipe.recipeIndex);
         if (recipe != null) {
-            recipes.add(recipe);
+            List<Recipe> singleRecipe = new ArrayList<>();
+            singleRecipe.add(recipe);
+            ItemPanels.bookmarkPanel.addGroup(singleRecipe, null, true);
         }
 
-        // Recurse into children
+        // Recurse into children (non-catalyst only)
         if (node.children != null) {
             for (MaterialNode child : node.children) {
                 if (!child.catalyst) {
-                    collectRecipesRecursive(child, recipes, visited);
+                    exportNodeToBookmarks(child, visited);
                 }
             }
         }
+
+        // Save after exporting this node and all children
+        ItemPanels.bookmarkPanel.save();
     }
 
     @Override

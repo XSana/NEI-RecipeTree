@@ -626,16 +626,16 @@ public class GuiRecipeTree extends GuiScreen {
 
     /**
      * Export current recipe tree to NEI bookmarks as a crafting chain.
-     * Uses BookmarkItem directly to lock in the specific item permutations chosen by the user.
+     * Collects all Recipe objects and lets NEI handle the crafting chain computation.
      */
     private void exportToBookmarks() {
         if (BoM.tree == null) return;
 
-        // Collect all bookmark items from the tree
-        List<codechicken.nei.bookmark.BookmarkItem> bookmarkItems = new ArrayList<>();
-        collectBookmarkItems(BoM.tree.goal, bookmarkItems, new HashSet<>());
+        // Collect all recipes from the tree
+        List<codechicken.nei.recipe.Recipe> allRecipes = new ArrayList<>();
+        collectRecipesToExport(BoM.tree.goal, allRecipes, new HashSet<>());
 
-        if (bookmarkItems.isEmpty()) return;
+        if (allRecipes.isEmpty()) return;
 
         try {
             // Use reflection to access protected 'grid' field from parent class PanelWidget
@@ -652,10 +652,9 @@ public class GuiRecipeTree extends GuiScreen {
                     codechicken.nei.BookmarkPanel.BookmarkViewMode.DEFAULT,
                     true));
 
-            // Add all items to the group
-            for (codechicken.nei.bookmark.BookmarkItem item : bookmarkItems) {
-                item.groupId = groupId;
-                grid.addItem(item, false);
+            // Add each recipe to the group
+            for (codechicken.nei.recipe.Recipe recipe : allRecipes) {
+                grid.addRecipe(recipe, 1, groupId);
             }
 
             ItemPanels.bookmarkPanel.save();
@@ -669,51 +668,28 @@ public class GuiRecipeTree extends GuiScreen {
     }
 
     /**
-     * Recursively collect BookmarkItems from the material node tree.
-     * Each node's recipe is exported with its specific ingredient (not all permutations).
+     * Recursively collect all recipes from the material node tree for export.
+     * Exports all nodes that have a recipe defined.
+     * Skips children of COLLAPSED nodes (user chose not to expand them).
      */
-    private void collectBookmarkItems(MaterialNode node, List<codechicken.nei.bookmark.BookmarkItem> items,
+    private void collectRecipesToExport(MaterialNode node, List<codechicken.nei.recipe.Recipe> recipes,
         Set<NEIRecipeRef> visited) {
         if (node == null || node.recipe == null) return;
 
         // Avoid cycles
         if (!visited.add(node.recipe)) return;
 
-        codechicken.nei.recipe.Recipe.RecipeId recipeId = codechicken.nei.recipe.Recipe.RecipeId
+        // Add this node's recipe
+        codechicken.nei.recipe.Recipe recipe = codechicken.nei.recipe.Recipe
             .of(node.recipe.handler, node.recipe.recipeIndex);
-
-        // Get output stacks from the recipe
-        List<ItemStack> outputs = node.recipe.getAllOutputs();
-        for (ItemStack output : outputs) {
-            if (output != null) {
-                long factor = output.stackSize;
-                items.add(
-                    codechicken.nei.bookmark.BookmarkItem.of(
-                        -1,
-                        output,
-                        factor,
-                        recipeId,
-                        codechicken.nei.bookmark.BookmarkItem.BookmarkItemType.RESULT));
-            }
+        if (recipe != null) {
+            recipes.add(recipe);
         }
-
-        // Add the ingredient (using the specific item chosen by user, not all permutations)
-        long factor = node.amount;
-        items.add(
-            codechicken.nei.bookmark.BookmarkItem.of(
-                -1,
-                node.ingredient,
-                factor,
-                recipeId,
-                codechicken.nei.bookmark.BookmarkItem.BookmarkItemType.INGREDIENT,
-                java.util.Collections.singletonMap(
-                    codechicken.nei.recipe.StackInfo.getItemStackGUID(node.ingredient),
-                    node.ingredient)));
 
         // Recurse into children only if this node is EXPANDED
         if (node.state == FoldState.EXPANDED && node.children != null) {
             for (MaterialNode child : node.children) {
-                collectBookmarkItems(child, items, visited);
+                collectRecipesToExport(child, recipes, visited);
             }
         }
     }

@@ -638,8 +638,9 @@ public class GuiRecipeTree extends GuiScreen {
         if (bookmarkItems.isEmpty()) return;
 
         try {
-            // Use reflection to access protected 'grid' field
+            // Use reflection to access protected 'grid' field from parent class PanelWidget
             java.lang.reflect.Field gridField = ItemPanels.bookmarkPanel.getClass()
+                .getSuperclass()
                 .getDeclaredField("grid");
             gridField.setAccessible(true);
             codechicken.nei.bookmark.BookmarkGrid grid = (codechicken.nei.bookmark.BookmarkGrid) gridField

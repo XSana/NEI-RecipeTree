@@ -1,0 +1,21 @@
+{
+	"modListVersion": 2,
+	"modList": [{
+		"modid": "${modId}",
+		"name": "${modName}",
+		"description": "Recipe Tree visualization for NotEnoughItems - ported from EMI's Bill of Materials feature.",
+		"version": "${modVersion}",
+		"mcversion": "${minecraftVersion}",
+		"url": "",
+		"updateUrl": "",
+		"authorList": ["takochan"],
+		"credits": "EMI by emilyploszaj for the original Recipe Tree feature",
+		"logoFile": "",
+		"screenshots": [],
+		"parent": "",
+		"requiredMods": ["NotEnoughItems"],
+		"dependencies": ["NotEnoughItems"],
+		"dependants": [],
+		"useDependencyInformation": true
+	}]
+}

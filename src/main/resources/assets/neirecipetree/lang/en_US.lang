@@ -1,0 +1,17 @@
+neirecipetree.button.tooltip=View Recipe Tree
+neirecipetree.button.description=Expand all ingredients recursively
+neirecipetree.button.select=Select for Recipe Tree
+neirecipetree.button.select_desc=Use this recipe in the tree
+neirecipetree.button.select_disabled=Not a matching recipe
+neirecipetree.screen.title=Recipe Tree
+neirecipetree.cost.total=Total Cost
+neirecipetree.cost.remainders=Remainders
+neirecipetree.help=LMB: Browse | Shift+LMB: Auto | RMB: Fold | Shift+RMB: Clear Node | Del: Reset All | Shift+Del: Close
+neirecipetree.tooltip.recipe=Recipe: %s
+neirecipetree.tooltip.amount=Amount: %d
+neirecipetree.tooltip.catalyst=Catalyst (not consumed)
+neirecipetree.tooltip.handler_info=%s (LMB to change, %d types)
+neirecipetree.tooltip.no_recipes=No recipes found
+neirecipetree.tooltip.lmb_select=LMB to browse & select recipe
+neirecipetree.tooltip.shift_lmb_auto=Shift+LMB to auto-select
+neirecipetree.tooltip.handlers_available=%d machine types available

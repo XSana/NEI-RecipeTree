@@ -1,0 +1,17 @@
+neirecipetree.button.tooltip=查看合成树
+neirecipetree.button.description=递归展开所有原材料
+neirecipetree.button.select=选择此配方
+neirecipetree.button.select_desc=将此配方用于合成树
+neirecipetree.button.select_disabled=配方不匹配
+neirecipetree.screen.title=合成树
+neirecipetree.cost.total=总材料成本
+neirecipetree.cost.remainders=副产物
+neirecipetree.help=左键: 浏览 | Shift+左键: 自动 | 右键: 折叠 | Shift+右键: 清除节点 | Del: 重置全部 | Shift+Del: 关闭
+neirecipetree.tooltip.recipe=配方: %s
+neirecipetree.tooltip.amount=数量: %d
+neirecipetree.tooltip.catalyst=催化剂 (不消耗)
+neirecipetree.tooltip.handler_info=%s (左键更换, 共%d种)
+neirecipetree.tooltip.no_recipes=未找到配方
+neirecipetree.tooltip.lmb_select=左键浏览并选择配方
+neirecipetree.tooltip.shift_lmb_auto=Shift+左键自动选择
+neirecipetree.tooltip.handlers_available=%d 种机器类型可用

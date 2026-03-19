@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+gradle.properties.local
+
+# Run directory (Minecraft test environment)
+run/
+
+# GTNH shared
+gtnhShared/

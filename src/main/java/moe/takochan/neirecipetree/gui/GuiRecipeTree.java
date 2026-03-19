@@ -626,51 +626,90 @@ public class GuiRecipeTree extends GuiScreen {
 
     /**
      * Export current recipe tree to NEI bookmarks as a crafting chain.
-     * All recipes are added to a single group so NEI can compute the crafting chain.
+     * Uses BookmarkItem directly to lock in the specific item permutations chosen by the user.
      */
     private void exportToBookmarks() {
         if (BoM.tree == null) return;
 
-        // Collect all recipes from the tree into a single list
-        List<Recipe> allRecipes = new ArrayList<>();
-        collectRecipesToExport(BoM.tree.goal, allRecipes, new HashSet<>());
+        // Collect all bookmark items from the tree
+        List<codechicken.nei.bookmark.BookmarkItem> bookmarkItems = new ArrayList<>();
+        collectBookmarkItems(BoM.tree.goal, bookmarkItems, new HashSet<>());
 
-        if (allRecipes.isEmpty()) return;
+        if (bookmarkItems.isEmpty()) return;
 
-        // Add all recipes to a single bookmark group with crafting enabled
-        // NEI will compute the crafting chain automatically
-        boolean added = ItemPanels.bookmarkPanel.addGroup(allRecipes, null, true);
-        if (added) {
+        try {
+            // Use reflection to access protected 'grid' field
+            java.lang.reflect.Field gridField = ItemPanels.bookmarkPanel.getClass()
+                .getDeclaredField("grid");
+            gridField.setAccessible(true);
+            codechicken.nei.bookmark.BookmarkGrid grid = (codechicken.nei.bookmark.BookmarkGrid) gridField
+                .get(ItemPanels.bookmarkPanel);
+
+            // Create a new bookmark group
+            int groupId = grid.addGroup(new codechicken.nei.bookmark.BookmarkGroup(null, true));
+
+            // Add all items to the group
+            for (codechicken.nei.bookmark.BookmarkItem item : bookmarkItems) {
+                item.groupId = groupId;
+                grid.addItem(item, false);
+            }
+
             ItemPanels.bookmarkPanel.save();
             mc.ingameGUI.getChatGUI()
                 .printChatMessage(
                     new net.minecraft.util.ChatComponentText(
                         "\u00a7a[RecipeTree] " + StatCollector.translateToLocal("neirecipetree.chat.bookmark_added")));
+        } catch (Exception e) {
+            LOG.error("Failed to export recipe tree to bookmarks", e);
         }
     }
 
     /**
-     * Recursively collect all recipes from the material node tree for export.
-     * Only non-catalyst nodes are exported.
+     * Recursively collect BookmarkItems from the material node tree.
+     * Each node's recipe is exported with its specific ingredient (not all permutations).
      */
-    private void collectRecipesToExport(MaterialNode node, List<Recipe> recipes, Set<NEIRecipeRef> visited) {
+    private void collectBookmarkItems(MaterialNode node, List<codechicken.nei.bookmark.BookmarkItem> items,
+        Set<NEIRecipeRef> visited) {
         if (node == null || node.recipe == null) return;
 
         // Avoid cycles
         if (!visited.add(node.recipe)) return;
 
-        // Add this node's recipe
-        Recipe recipe = Recipe.of(node.recipe.handler, node.recipe.recipeIndex);
-        if (recipe != null) {
-            recipes.add(recipe);
+        codechicken.nei.recipe.Recipe.RecipeId recipeId = codechicken.nei.recipe.Recipe.RecipeId
+            .of(node.recipe.handler, node.recipe.recipeIndex);
+
+        // Get output stacks from the recipe
+        List<ItemStack> outputs = node.recipe.getAllOutputs();
+        for (ItemStack output : outputs) {
+            if (output != null) {
+                long factor = output.stackSize;
+                items.add(
+                    codechicken.nei.bookmark.BookmarkItem.of(
+                        -1,
+                        output,
+                        factor,
+                        recipeId,
+                        codechicken.nei.bookmark.BookmarkItem.BookmarkItemType.RESULT));
+            }
         }
 
-        // Recurse into children (non-catalyst only)
-        if (node.children != null) {
+        // Add the ingredient (using the specific item chosen by user, not all permutations)
+        long factor = node.amount;
+        items.add(
+            codechicken.nei.bookmark.BookmarkItem.of(
+                -1,
+                node.ingredient,
+                factor,
+                recipeId,
+                codechicken.nei.bookmark.BookmarkItem.BookmarkItemType.INGREDIENT,
+                java.util.Collections.singletonMap(
+                    codechicken.nei.recipe.StackInfo.getItemStackGUID(node.ingredient),
+                    node.ingredient)));
+
+        // Recurse into children only if this node is EXPANDED
+        if (node.state == FoldState.EXPANDED && node.children != null) {
             for (MaterialNode child : node.children) {
-                if (!child.catalyst) {
-                    collectRecipesToExport(child, recipes, visited);
-                }
+                collectBookmarkItems(child, items, visited);
             }
         }
     }

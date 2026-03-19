@@ -18,3 +18,5 @@ neirecipetree.tooltip.handlers_available=%d 种机器类型可用
 neirecipetree.button.bookmark=导出到收藏夹
 neirecipetree.button.bookmark.tooltip=将当前合成树添加到 NEI 收藏夹
 neirecipetree.chat.bookmark_added=合成树已添加到收藏夹！
+neirecipetree.button.export_image=导出为图片
+neirecipetree.button.export_image.tooltip=将当前合成树保存为 PNG 图片

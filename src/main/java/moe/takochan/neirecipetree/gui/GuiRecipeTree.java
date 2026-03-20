@@ -2,6 +2,7 @@ package moe.takochan.neirecipetree.gui;
 
 import java.awt.Dimension;
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -10,6 +11,8 @@ import java.util.Set;
 
 import javax.imageio.ImageIO;
 
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.item.ItemStack;
@@ -17,7 +20,9 @@ import net.minecraft.util.StatCollector;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.GL11;
 
 import codechicken.nei.ItemPanels;
 import codechicken.nei.recipe.GuiCraftingRecipe;
@@ -37,6 +42,9 @@ import moe.takochan.neirecipetree.recipe.RecipeLookup;
 public class GuiRecipeTree extends GuiScreen {
 
     private static final Logger LOG = LogManager.getLogger("neirecipetree");
+    private static final int EXPORT_PADDING = 24;
+    private static final int EXPORT_BACKGROUND = 0xFF101018;
+    private static final int EXPORT_SCALE = 4;
     private static int zoom = 0;
     private double offX = 0;
     private double offY = 0;
@@ -174,81 +182,7 @@ public class GuiRecipeTree extends GuiScreen {
             return;
         }
 
-        float scale = getScale();
-        TreeRenderer.setupZoom(scale, offX, offY, width, height);
-
-        // Convert mouse to world coordinates
-        hoveredNode = null;
-        hoveredCost = null;
-        double worldMouseX = (mouseX - width / 2.0 - offX) / scale;
-        double worldMouseY = (mouseY - height / 3.0 - offY) / scale;
-
-        // Draw connecting lines
-        for (TreeNode node : nodes) {
-            if (node.materialNode.children != null && node.materialNode.state == FoldState.EXPANDED
-                && node.materialNode.recipe != null) {
-                int parentCenterX = node.x + node.midOffset;
-                int parentBottomY = node.y + 20;
-
-                for (MaterialNode child : node.materialNode.children) {
-                    TreeNode childNode = findTreeNode(child);
-                    if (childNode != null) {
-                        int childCenterX = childNode.x + childNode.midOffset;
-                        int childTopY = childNode.y;
-                        int lineColor = getLineColor(child);
-                        int midY = (parentBottomY + childTopY) / 2;
-                        TreeRenderer.drawLine(parentCenterX, parentBottomY, parentCenterX, midY, lineColor);
-                        TreeRenderer.drawLine(parentCenterX, midY, childCenterX, midY, lineColor);
-                        TreeRenderer.drawLine(childCenterX, midY, childCenterX, childTopY, lineColor);
-                    }
-                }
-            }
-        }
-
-        // Draw nodes
-        for (TreeNode node : nodes) {
-            drawNode(node);
-
-            // Check hover
-            if (worldMouseX >= node.x && worldMouseX < node.x + node.width
-                && worldMouseY >= node.y
-                && worldMouseY < node.y + 20) {
-                hoveredNode = node;
-            }
-        }
-
-        // Draw cost header and entries
-        if (!costs.isEmpty()) {
-            int sectionBaseY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + 20;
-            String costTitle = "\u00a7e\u00a7l" + StatCollector.translateToLocal("neirecipetree.cost.total");
-            TreeRenderer.drawCenteredText(0, sectionBaseY, costTitle, 0xFFFFAA00);
-            for (CostEntry cost : costs) {
-                drawCostEntry(cost);
-                // Check hover on cost items
-                if (worldMouseX >= cost.x - 8 && worldMouseX < cost.x + 16
-                    && worldMouseY >= cost.y
-                    && worldMouseY < cost.y + 16) {
-                    hoveredCost = cost;
-                }
-            }
-        }
-
-        if (!remainderEntries.isEmpty()) {
-            int costItemsY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + 35;
-            int remHeaderY = costItemsY + 30;
-            String remTitle = "\u00a77" + StatCollector.translateToLocal("neirecipetree.cost.remainders");
-            TreeRenderer.drawCenteredText(0, remHeaderY, remTitle, 0xFF888888);
-            for (CostEntry rem : remainderEntries) {
-                drawCostEntry(rem);
-                if (worldMouseX >= rem.x - 8 && worldMouseX < rem.x + 16
-                    && worldMouseY >= rem.y
-                    && worldMouseY < rem.y + 16) {
-                    hoveredCost = rem;
-                }
-            }
-        }
-
-        TreeRenderer.teardownZoom();
+        renderTreeLayer(width, height, getScale(), offX, offY, true, false, mouseX, mouseY);
 
         // Draw batch counter (screen space)
         String batchText = "x" + BoM.tree.batches;
@@ -280,6 +214,81 @@ public class GuiRecipeTree extends GuiScreen {
 
         // Draw buttons (super.drawScreen renders buttonList)
         super.drawScreen(mouseX, mouseY, partialTicks);
+    }
+
+    private void renderTreeLayer(int renderWidth, int renderHeight, float scale, double renderOffX, double renderOffY,
+        boolean interactive, boolean opaqueNodeBackgrounds, int mouseX, int mouseY) {
+        TreeRenderer.setupZoom(scale, renderOffX, renderOffY, renderWidth, renderHeight);
+
+        double worldMouseX = 0;
+        double worldMouseY = 0;
+        hoveredNode = null;
+        hoveredCost = null;
+        if (interactive) {
+            worldMouseX = (mouseX - renderWidth / 2.0 - renderOffX) / scale;
+            worldMouseY = (mouseY - renderHeight / 3.0 - renderOffY) / scale;
+        }
+
+        for (TreeNode node : nodes) {
+            if (node.materialNode.children != null && node.materialNode.state == FoldState.EXPANDED
+                && node.materialNode.recipe != null) {
+                int parentCenterX = node.x + node.midOffset;
+                int parentBottomY = node.y + 20;
+
+                for (MaterialNode child : node.materialNode.children) {
+                    TreeNode childNode = findTreeNode(child);
+                    if (childNode != null) {
+                        int childCenterX = childNode.x + childNode.midOffset;
+                        int childTopY = childNode.y;
+                        int lineColor = getLineColor(child);
+                        int midY = (parentBottomY + childTopY) / 2;
+                        TreeRenderer.drawLine(parentCenterX, parentBottomY, parentCenterX, midY, lineColor);
+                        TreeRenderer.drawLine(parentCenterX, midY, childCenterX, midY, lineColor);
+                        TreeRenderer.drawLine(childCenterX, midY, childCenterX, childTopY, lineColor);
+                    }
+                }
+            }
+        }
+
+        for (TreeNode node : nodes) {
+            drawNode(node, opaqueNodeBackgrounds);
+            if (interactive && worldMouseX >= node.x && worldMouseX < node.x + node.width
+                && worldMouseY >= node.y
+                && worldMouseY < node.y + 20) {
+                hoveredNode = node;
+            }
+        }
+
+        if (!costs.isEmpty()) {
+            int sectionBaseY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + 20;
+            String costTitle = "\u00a7e\u00a7l" + StatCollector.translateToLocal("neirecipetree.cost.total");
+            TreeRenderer.drawCenteredText(0, sectionBaseY, costTitle, 0xFFFFAA00);
+            for (CostEntry cost : costs) {
+                drawCostEntry(cost);
+                if (interactive && worldMouseX >= cost.x - 8 && worldMouseX < cost.x + 16
+                    && worldMouseY >= cost.y
+                    && worldMouseY < cost.y + 16) {
+                    hoveredCost = cost;
+                }
+            }
+        }
+
+        if (!remainderEntries.isEmpty()) {
+            int costItemsY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + 35;
+            int remHeaderY = costItemsY + 30;
+            String remTitle = "\u00a77" + StatCollector.translateToLocal("neirecipetree.cost.remainders");
+            TreeRenderer.drawCenteredText(0, remHeaderY, remTitle, 0xFF888888);
+            for (CostEntry rem : remainderEntries) {
+                drawCostEntry(rem);
+                if (interactive && worldMouseX >= rem.x - 8 && worldMouseX < rem.x + 16
+                    && worldMouseY >= rem.y
+                    && worldMouseY < rem.y + 16) {
+                    hoveredCost = rem;
+                }
+            }
+        }
+
+        TreeRenderer.teardownZoom();
     }
 
     private void drawNodeTooltip(TreeNode treeNode, int mouseX, int mouseY) {
@@ -334,7 +343,7 @@ public class GuiRecipeTree extends GuiScreen {
         drawHoveringText(tooltip, mouseX, mouseY, fontRendererObj);
     }
 
-    private void drawNode(TreeNode node) {
+    private void drawNode(TreeNode node, boolean opaqueBackground) {
         MaterialNode mn = node.materialNode;
         int x = node.x;
         int y = node.y;
@@ -348,6 +357,9 @@ public class GuiRecipeTree extends GuiScreen {
             bgColor = 0x88005500;
         } else if (mn.progress == ProgressState.PARTIAL) {
             bgColor = 0x88553300;
+        }
+        if (opaqueBackground) {
+            bgColor = 0xFF000000 | (bgColor & 0x00FFFFFF);
         }
         TreeRenderer.drawNodeBackground(x + 1, y + 1, TreeLayout.NODE_WIDTH - 2, 18, bgColor);
 
@@ -379,16 +391,6 @@ public class GuiRecipeTree extends GuiScreen {
         String amountText = String.valueOf(node.amount);
         TreeRenderer.drawCenteredText(x + TreeLayout.NODE_WIDTH / 2, y + 22, amountText, 0xFFCCCCCC);
 
-        // Handler name above resolved nodes (short, centered)
-        if (mn.recipe != null) {
-            String handlerName = mn.recipe.getHandlerName();
-            // Truncate to ~8 chars to fit above node
-            if (handlerName.length() > 10) {
-                handlerName = handlerName.substring(0, 9) + "..";
-            }
-            TreeRenderer.drawCenteredText(x + TreeLayout.NODE_WIDTH / 2, y - 9, "\u00a77" + handlerName, 0xFF888888);
-        }
-
         // Fold/expand indicator
         if (mn.recipe != null && mn.children != null && !mn.children.isEmpty()) {
             String foldText = mn.state == FoldState.COLLAPSED ? "+" : "-";
@@ -405,9 +407,13 @@ public class GuiRecipeTree extends GuiScreen {
 
     private void drawCostEntry(CostEntry cost) {
         TreeRenderer.drawItemStack(cost.x - 8, cost.y, cost.stack);
-        String amountStr = cost.chanced ? "~" + cost.amount : String.valueOf(cost.amount);
+        String amountStr = getCostAmountText(cost);
         int color = cost.chanced ? 0xFFFFAA00 : 0xFFFFFFFF;
         TreeRenderer.drawAmountText(cost.x + 10, cost.y + 4, amountStr, color);
+    }
+
+    private String getCostAmountText(CostEntry cost) {
+        return cost.chanced ? "~" + cost.amount : String.valueOf(cost.amount);
     }
 
     /**
@@ -713,48 +719,38 @@ public class GuiRecipeTree extends GuiScreen {
      * Export current recipe tree to PNG image.
      */
     private void exportToImage() {
-        if (BoM.tree == null) return;
+        if (BoM.tree == null) {
+            return;
+        }
 
+        Framebuffer framebuffer = null;
         try {
-            // Calculate bounds of the tree
-            TreeLayout.TreeVolume volume = TreeLayout
-                .layout(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
-            int minWidth = volume.getMaxRight() - volume.getMinLeft();
-            int minHeight = nodeHeight * TreeLayout.NODE_VERTICAL_SPACING + 40;
-
-            // Add space for costs
-            if (!costs.isEmpty()) {
-                minHeight += costs.size() * 18 + 20;
-            }
-            if (!remainderEntries.isEmpty()) {
-                minHeight += remainderEntries.size() * 18 + 20;
+            if (!OpenGlHelper.isFramebufferEnabled()) {
+                throw new IllegalStateException("Framebuffer is not supported on this system");
             }
 
-            int width = Math.max(800, minWidth + 40);
-            int height = Math.max(600, minHeight);
+            recalculateTree();
+            TreeSceneBounds bounds = calculateTreeSceneBounds();
+            int logicalWidth = Math.max(64, bounds.getWidth() + EXPORT_PADDING * 2);
+            int logicalHeight = Math.max(64, bounds.getHeight() + EXPORT_PADDING * 2);
+            int maxTextureSize = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
+            int widthScaleLimit = Math.max(1, maxTextureSize / logicalWidth);
+            int heightScaleLimit = Math.max(1, maxTextureSize / logicalHeight);
+            int exportScale = Math.max(1, Math.min(EXPORT_SCALE, Math.min(widthScaleLimit, heightScaleLimit)));
+            int renderWidth = logicalWidth * exportScale;
+            int renderHeight = logicalHeight * exportScale;
+            double renderOffX = (EXPORT_PADDING - bounds.minX - logicalWidth / 2.0) * exportScale;
+            double renderOffY = (EXPORT_PADDING - bounds.minY - logicalHeight / 3.0) * exportScale;
 
-            // Create buffered image
-            java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
-                width,
-                height,
-                java.awt.image.BufferedImage.TYPE_INT_RGB);
-            java.awt.Graphics2D g2d = image.createGraphics();
+            framebuffer = new Framebuffer(renderWidth, renderHeight, true);
+            renderTreeToFramebuffer(framebuffer, renderWidth, renderHeight, renderOffX, renderOffY, exportScale);
 
-            // Set background
-            g2d.setColor(new java.awt.Color(0x1a1a2e));
-            g2d.fillRect(0, 0, width, height);
-
-            // Render tree to graphics
-            renderTreeToGraphics(g2d, width, height);
-
-            g2d.dispose();
-
-            // Save to screenshots folder in Minecraft directory
-            File mcDir = mc.mcDataDir;
-            File screenshotsDir = new File(mcDir, "screenshots/recipe_trees");
-            if (!screenshotsDir.exists()) {
-                screenshotsDir.mkdirs();
+            java.awt.image.BufferedImage image = readFramebuffer(framebuffer, renderWidth, renderHeight);
+            File screenshotsDir = new File(mc.mcDataDir, "screenshots/recipe_trees");
+            if (!screenshotsDir.exists() && !screenshotsDir.mkdirs() && !screenshotsDir.exists()) {
+                throw new IllegalStateException("Could not create screenshot directory");
             }
+
             String timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd_HH.mm.ss").format(new java.util.Date());
             File outputFile = new File(screenshotsDir, "recipe_tree_" + timestamp + ".png");
             ImageIO.write(image, "png", outputFile);
@@ -768,130 +764,121 @@ public class GuiRecipeTree extends GuiScreen {
             mc.ingameGUI.getChatGUI()
                 .printChatMessage(
                     new net.minecraft.util.ChatComponentText("\u00a7c[RecipeTree] Export failed: " + e.getMessage()));
+        } finally {
+            if (framebuffer != null) {
+                framebuffer.deleteFramebuffer();
+            }
+            if (mc.getFramebuffer() != null) {
+                mc.getFramebuffer().bindFramebuffer(true);
+            }
         }
     }
 
-    /**
-     * Render the tree to a Java2D graphics context.
-     */
-    private void renderTreeToGraphics(java.awt.Graphics2D g2d, int canvasWidth, int canvasHeight) {
-        if (BoM.tree == null) return;
+    private void renderTreeToFramebuffer(Framebuffer framebuffer, int renderWidth, int renderHeight, double renderOffX,
+        double renderOffY, float renderScale) {
+        framebuffer.setFramebufferColor(0.0F, 0.0F, 0.0F, 0.0F);
+        framebuffer.framebufferClear();
+        framebuffer.bindFramebuffer(true);
 
-        // Recalculate layout
-        TreeLayout.TreeVolume volume = TreeLayout.layout(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
-        List<TreeNode> renderNodes = new ArrayList<>(volume.nodes);
+        try {
+            GL11.glViewport(0, 0, renderWidth, renderHeight);
+            GL11.glMatrixMode(GL11.GL_PROJECTION);
+            GL11.glPushMatrix();
+            GL11.glLoadIdentity();
+            GL11.glOrtho(0.0D, renderWidth, renderHeight, 0.0D, 1000.0D, 3000.0D);
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+            GL11.glPushMatrix();
+            GL11.glLoadIdentity();
+            GL11.glTranslatef(0.0F, 0.0F, -2000.0F);
 
-        // Center nodes horizontally
-        int horizontalOffset = (volume.getMaxRight() + volume.getMinLeft()) / 2;
-        for (TreeNode node : renderNodes) {
-            node.x -= horizontalOffset;
+            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glDisable(GL11.GL_FOG);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glEnable(GL11.GL_BLEND);
+            OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+
+            drawRect(0, 0, renderWidth, renderHeight, EXPORT_BACKGROUND);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            renderTreeLayer(renderWidth, renderHeight, renderScale, renderOffX, renderOffY, false, true, 0, 0);
+        } finally {
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+            GL11.glPopMatrix();
+            GL11.glMatrixMode(GL11.GL_PROJECTION);
+            GL11.glPopMatrix();
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+            framebuffer.unbindFramebuffer();
+        }
+    }
+
+    private java.awt.image.BufferedImage readFramebuffer(Framebuffer framebuffer, int width, int height) {
+        ByteBuffer pixelBuffer = BufferUtils.createByteBuffer(width * height * 4);
+        framebuffer.bindFramebuffer(true);
+        try {
+            GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+            GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixelBuffer);
+        } finally {
+            framebuffer.unbindFramebuffer();
         }
 
-        // Offset to center on canvas
-        int offsetX = (canvasWidth - (volume.getMaxRight() - volume.getMinLeft())) / 2;
-        int offsetY = 20;
-
-        // Draw connections
-        g2d.setStroke(new java.awt.BasicStroke(1.5f));
-        for (TreeNode node : renderNodes) {
-            if (node.materialNode.children != null && node.materialNode.state == FoldState.EXPANDED
-                && node.materialNode.recipe != null) {
-                int parentCenterX = node.x + node.midOffset + offsetX;
-                int parentBottomY = node.y + 20 + offsetY;
-
-                for (MaterialNode child : node.materialNode.children) {
-                    TreeNode childNode = findTreeNode(child);
-                    if (childNode != null) {
-                        int childCenterX = childNode.x + childNode.midOffset + offsetX;
-                        int childTopY = childNode.y + offsetY;
-                        int midY = (parentBottomY + childTopY) / 2;
-
-                        java.awt.Color lineColor = getLineColorForGraphics(child);
-                        g2d.setColor(lineColor);
-                        g2d.drawLine(parentCenterX, parentBottomY, parentCenterX, midY);
-                        g2d.drawLine(parentCenterX, midY, childCenterX, midY);
-                        g2d.drawLine(childCenterX, midY, childCenterX, childTopY);
-                    }
-                }
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(width, height,
+            java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = (x + width * y) * 4;
+                int r = pixelBuffer.get(index) & 0xFF;
+                int g = pixelBuffer.get(index + 1) & 0xFF;
+                int b = pixelBuffer.get(index + 2) & 0xFF;
+                int a = pixelBuffer.get(index + 3) & 0xFF;
+                image.setRGB(x, height - 1 - y, a << 24 | r << 16 | g << 8 | b);
             }
         }
+        return image;
+    }
 
-        // Draw nodes
-        for (TreeNode node : renderNodes) {
-            drawNodeToGraphics(g2d, node, offsetX, offsetY);
+    private TreeSceneBounds calculateTreeSceneBounds() {
+        TreeSceneBounds bounds = new TreeSceneBounds();
+
+        for (TreeNode node : nodes) {
+            bounds.include(node.x, node.y, node.x + TreeLayout.NODE_WIDTH, node.y + 20);
+
+            String amountText = String.valueOf(node.amount);
+            int amountWidth = fontRendererObj.getStringWidth(amountText);
+            int amountLeft = node.x + TreeLayout.NODE_WIDTH / 2 - amountWidth / 2;
+            bounds.include(amountLeft, node.y + 22, amountLeft + amountWidth, node.y + 22 + fontRendererObj.FONT_HEIGHT);
+
         }
 
-        // Draw costs
         if (!costs.isEmpty()) {
-            int sectionBaseY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + offsetY + 20;
-            g2d.setColor(new java.awt.Color(0xFFFFAA00, true));
-            g2d.setFont(
-                g2d.getFont()
-                    .deriveFont(14.0f));
-            String costTitle = StatCollector.translateToLocal("neirecipetree.cost.total");
-            int titleWidth = g2d.getFontMetrics()
-                .stringWidth(costTitle);
-            g2d.drawString(costTitle, (canvasWidth - titleWidth) / 2, sectionBaseY);
-
-            int costY = sectionBaseY + 12;
+            int sectionBaseY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + 20;
+            String costTitle = "\u00a7e\u00a7l" + StatCollector.translateToLocal("neirecipetree.cost.total");
+            int titleWidth = fontRendererObj.getStringWidth(costTitle);
+            bounds.include(-titleWidth / 2, sectionBaseY, titleWidth / 2, sectionBaseY + fontRendererObj.FONT_HEIGHT);
             for (CostEntry cost : costs) {
-                costY += 16;
-                g2d.setColor(java.awt.Color.WHITE);
-                String amountStr = cost.chanced ? "~" + cost.amount : String.valueOf(cost.amount);
-                g2d.drawString(amountStr + "x " + cost.stack.getDisplayName(), 10, costY);
+                String amountText = getCostAmountText(cost);
+                int amountWidth = fontRendererObj.getStringWidth(amountText);
+                bounds.include(cost.x - 8, cost.y, cost.x + 10 + amountWidth, cost.y + 16);
             }
         }
-    }
 
-    private java.awt.Color getLineColorForGraphics(MaterialNode child) {
-        if (child.progress == ProgressState.COMPLETED) {
-            return new java.awt.Color(0x55FF55);
-        } else if (child.progress == ProgressState.PARTIAL) {
-            return new java.awt.Color(0xFFFF55);
-        } else {
-            return new java.awt.Color(0xFF5555);
+        if (!remainderEntries.isEmpty()) {
+            int costItemsY = (nodeHeight + 1) * TreeLayout.NODE_VERTICAL_SPACING + 35;
+            int remHeaderY = costItemsY + 30;
+            String remTitle = "\u00a77" + StatCollector.translateToLocal("neirecipetree.cost.remainders");
+            int remTitleWidth = fontRendererObj.getStringWidth(remTitle);
+            bounds.include(-remTitleWidth / 2, remHeaderY, remTitleWidth / 2, remHeaderY + fontRendererObj.FONT_HEIGHT);
+            for (CostEntry rem : remainderEntries) {
+                String amountText = getCostAmountText(rem);
+                int amountWidth = fontRendererObj.getStringWidth(amountText);
+                bounds.include(rem.x - 8, rem.y, rem.x + 10 + amountWidth, rem.y + 16);
+            }
         }
-    }
 
-    private void drawNodeToGraphics(java.awt.Graphics2D g2d, TreeNode node, int offsetX, int offsetY) {
-        int x = node.x + offsetX;
-        int y = node.y + offsetY;
-
-        // Draw node background
-        g2d.setColor(new java.awt.Color(0x2a2a3e));
-        g2d.fillRoundRect(x, y, TreeLayout.NODE_WIDTH, 18, 4, 4);
-
-        // Draw border
-        g2d.setColor(getNodeColorForGraphics(node.materialNode));
-        g2d.setStroke(new java.awt.BasicStroke(2.0f));
-        g2d.drawRoundRect(x, y, TreeLayout.NODE_WIDTH, 18, 4, 4);
-
-        // Draw item name
-        g2d.setColor(java.awt.Color.WHITE);
-        g2d.setFont(
-            g2d.getFont()
-                .deriveFont(10.0f));
-        String name = node.materialNode.ingredient.getDisplayName();
-        if (name.length() > 12) {
-            name = name.substring(0, 11) + "..";
+        if (bounds.empty()) {
+            bounds.include(0, 0, TreeLayout.NODE_WIDTH, 20);
         }
-        g2d.drawString(name, x + 4, y + 13);
-
-        // Draw amount
-        if (node.amount > 1) {
-            g2d.setColor(java.awt.Color.YELLOW);
-            g2d.drawString("x" + node.amount, x + TreeLayout.NODE_WIDTH - 20, y + 13);
-        }
-    }
-
-    private java.awt.Color getNodeColorForGraphics(MaterialNode mn) {
-        if (mn.catalyst) {
-            return new java.awt.Color(0x5555FF);
-        } else if (mn.recipe == null) {
-            return new java.awt.Color(0xFF5555);
-        } else {
-            return new java.awt.Color(0x55FF55);
-        }
+        return bounds;
     }
 
     @Override
@@ -952,6 +939,33 @@ public class GuiRecipeTree extends GuiScreen {
                     net.minecraft.util.StatCollector.translateToLocal("neirecipetree.button.export_image.tooltip"));
             }
             return tooltip;
+        }
+    }
+
+    private static class TreeSceneBounds {
+
+        private int minX = Integer.MAX_VALUE;
+        private int minY = Integer.MAX_VALUE;
+        private int maxX = Integer.MIN_VALUE;
+        private int maxY = Integer.MIN_VALUE;
+
+        private void include(int left, int top, int right, int bottom) {
+            minX = Math.min(minX, left);
+            minY = Math.min(minY, top);
+            maxX = Math.max(maxX, right);
+            maxY = Math.max(maxY, bottom);
+        }
+
+        private boolean empty() {
+            return minX == Integer.MAX_VALUE;
+        }
+
+        private int getWidth() {
+            return Math.max(0, maxX - minX);
+        }
+
+        private int getHeight() {
+            return Math.max(0, maxY - minY);
         }
     }
 

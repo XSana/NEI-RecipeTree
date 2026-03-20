@@ -27,6 +27,7 @@ public class BoM {
     public static Map<ItemStackKey, NEIRecipeRef> defaultRecipes = new HashMap<>();
     public static Map<ItemStackKey, NEIRecipeRef> addedRecipes = new HashMap<>();
     public static Set<NEIRecipeRef> disabledRecipes = new HashSet<>();
+    public static Set<ItemStackKey> userExpandedNodes = new HashSet<>();
     /** Tracks the selected recipe index per ingredient for cycling */
     public static Map<ItemStackKey, Integer> recipeIndices = new HashMap<>();
     public static boolean craftingMode = false;
@@ -112,6 +113,10 @@ public class BoM {
 
     public static void addResolution(ItemStack stack, NEIRecipeRef recipe) {
         if (tree != null) {
+            ItemStackKey key = ItemStackKey.of(stack);
+            if (key != null) {
+                userExpandedNodes.add(key);
+            }
             tree.addResolution(stack, recipe);
         }
     }
@@ -124,9 +129,25 @@ public class BoM {
                 addedRecipes.remove(key);
                 defaultRecipes.remove(key);
                 recipeIndices.remove(key);
+                userExpandedNodes.remove(key);
                 tree.recalculate();
             }
         }
+    }
+
+    public static void setResolution(ItemStack stack, NEIRecipeRef recipe) {
+        ItemStackKey key = ItemStackKey.of(stack);
+        if (tree == null || key == null || recipe == null) {
+            return;
+        }
+
+        if (tree.resolutions.containsKey(key) || addedRecipes.containsKey(key) || defaultRecipes.containsKey(key)) {
+            clearResolution(stack);
+        }
+
+        disabledRecipes.remove(recipe);
+        addResolution(stack, recipe);
+        addedRecipes.put(key, recipe);
     }
 
     /**
@@ -158,11 +179,7 @@ public class BoM {
         recipeIndices.put(key, nextIndex);
 
         NEIRecipeRef nextRecipe = recipes.get(nextIndex);
-        addedRecipes.put(key, nextRecipe);
-
-        if (tree != null) {
-            tree.addResolution(stack, nextRecipe);
-        }
+        setResolution(stack, nextRecipe);
         return true;
     }
 
@@ -185,8 +202,7 @@ public class BoM {
      */
     public static void resolveAndReturn(NEIRecipeRef recipe) {
         if (pendingResolution != null && tree != null) {
-            addResolution(pendingResolution, recipe);
-            addedRecipes.put(ItemStackKey.of(pendingResolution), recipe);
+            setResolution(pendingResolution, recipe);
             pendingResolution = null;
             Minecraft mc = net.minecraft.client.Minecraft.getMinecraft();
             mc.displayGuiScreen(new moe.takochan.neirecipetree.gui.GuiRecipeTree(null));
@@ -198,6 +214,7 @@ public class BoM {
         defaultRecipes.clear();
         addedRecipes.clear();
         disabledRecipes.clear();
+        userExpandedNodes.clear();
         recipeIndices.clear();
         craftingMode = false;
         pendingResolution = null;

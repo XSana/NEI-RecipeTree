@@ -49,6 +49,7 @@ public class MaterialTree {
         ItemStackKey key = ItemStackKey.of(stack);
         if (key != null) {
             resolutions.put(key, recipe);
+            goal.applyResolution(key, recipe);
             recalculate();
         }
     }

@@ -11,6 +11,7 @@ import java.util.Set;
 
 import javax.imageio.ImageIO;
 
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.client.gui.GuiScreen;
@@ -25,7 +26,10 @@ import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 import codechicken.nei.ItemPanels;
+import codechicken.nei.drawable.DrawableResource;
 import codechicken.nei.recipe.GuiCraftingRecipe;
+import codechicken.nei.recipe.GuiRecipeTab;
+import codechicken.nei.recipe.HandlerInfo;
 import codechicken.nei.recipe.Recipe;
 import codechicken.nei.recipe.RecipeTooltipLineHandler;
 import moe.takochan.neirecipetree.bom.BoM;
@@ -45,6 +49,15 @@ public class GuiRecipeTree extends GuiScreen {
     private static final int EXPORT_PADDING = 24;
     private static final int EXPORT_BACKGROUND = 0xFF101018;
     private static final int EXPORT_SCALE = 4;
+    private static final int NODE_BACKGROUND_COLOR = 0x88333333;
+    private static final int NODE_BORDER_COLOR = 0xFF888888;
+    private static final int NODE_LINE_COLOR = 0xFF727272;
+    private static final int COLLAPSED_BORDER_COLOR = 0xFF6E96E6;
+    private static final int SELECTABLE_BORDER_COLOR = 0xFF55FF55;
+    private static final int CHANCED_BORDER_COLOR = 0xFFFFAA00;
+    private static final float TRACE_HIGHLIGHT_STRENGTH = 0.65F;
+    private static final float CHILD_HIGHLIGHT_STRENGTH = 0.55F;
+    private static final int ITEM_HIGHLIGHT_COLOR = 0xFFF4F0B8;
     private static int zoom = 0;
     private double offX = 0;
     private double offY = 0;
@@ -56,6 +69,7 @@ public class GuiRecipeTree extends GuiScreen {
     private boolean dragging = false;
     private int nodeHeight = 0;
     private TreeNode hoveredNode = null;
+    private HoverArea hoveredNodeArea = HoverArea.NONE;
     private CostEntry hoveredCost = null;
 
     // Recipe preview tooltip — reuses NEI's own RecipeTooltipLineHandler
@@ -68,6 +82,14 @@ public class GuiRecipeTree extends GuiScreen {
     private GuiRecipeTreeButton exportButton;
     // Export to image button
     private GuiRecipeTreeButton exportImageButton;
+
+    private enum HoverArea {
+
+        NONE,
+        ITEM,
+        RECIPE,
+        FRAME
+    }
 
     public GuiRecipeTree(GuiScreen parent) {
         this.parentScreen = parent;
@@ -84,12 +106,14 @@ public class GuiRecipeTree extends GuiScreen {
         // Add export to bookmarks button (top-right corner)
         int buttonX = width - 22;
         int buttonY = 4;
-        exportButton = new GuiRecipeTreeButton(buttonX, buttonY, "B", this::exportToBookmarks);
+        exportButton = new GuiRecipeTreeButton(buttonX, buttonY, ButtonIcon.BOOKMARK,
+            "neirecipetree.button.bookmark", "neirecipetree.button.bookmark.tooltip", this::exportToBookmarks);
 
         // Add export to image button (next to bookmarks button)
         int imgButtonX = width - 40;
         int imgButtonY = 4;
-        exportImageButton = new GuiRecipeTreeButton(imgButtonX, imgButtonY, "I", this::exportToImage);
+        exportImageButton = new GuiRecipeTreeButton(imgButtonX, imgButtonY, ButtonIcon.EXPORT_IMAGE,
+            "neirecipetree.button.export_image", "neirecipetree.button.export_image.tooltip", this::exportToImage);
 
         buttonList.add(exportButton);
         buttonList.add(exportImageButton);
@@ -104,6 +128,9 @@ public class GuiRecipeTree extends GuiScreen {
 
         // Always recalculate tree structure before layout and cost
         BoM.tree.recalculate();
+        BoM.tree.calculateProgress(null);
+        BoM.tree.goal.pruneUnusedAutoResolutions(BoM.tree, true);
+        BoM.tree.calculateProgress(null);
 
         TreeLayout.TreeVolume volume = TreeLayout.layout(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
         nodes = volume.nodes;
@@ -200,20 +227,35 @@ public class GuiRecipeTree extends GuiScreen {
         String helpText = "\u00a77" + StatCollector.translateToLocal("neirecipetree.help");
         fontRendererObj.drawStringWithShadow(helpText, 4, height - 12, 0xFF666666);
 
+        // Draw buttons (super.drawScreen renders buttonList)
+        super.drawScreen(mouseX, mouseY, partialTicks);
+
         // Draw tooltips (in screen space, after teardownZoom)
-        if (hoveredNode != null) {
+        GuiRecipeTreeButton hoveredActionButton = getHoveredActionButton(mouseX, mouseY);
+        if (hoveredActionButton != null) {
+            clearRecipeTooltipPreview();
+            drawHoveringText(hoveredActionButton.getToolTip(), mouseX, mouseY, fontRendererObj);
+        } else if (hoveredNode != null && hoveredNodeArea == HoverArea.ITEM) {
             drawNodeTooltip(hoveredNode, mouseX, mouseY);
+        } else if (hoveredNode != null && hoveredNodeArea == HoverArea.RECIPE) {
+            drawRecipeTooltip(hoveredNode, mouseX, mouseY);
         } else {
             // Clear tooltip handler when not hovering a node to avoid stale NEI widget state
-            recipeTooltipHandler = null;
-            recipeTooltipRef = null;
+            clearRecipeTooltipPreview();
             if (hoveredCost != null) {
                 drawCostTooltip(hoveredCost, mouseX, mouseY);
             }
         }
+    }
 
-        // Draw buttons (super.drawScreen renders buttonList)
-        super.drawScreen(mouseX, mouseY, partialTicks);
+    private GuiRecipeTreeButton getHoveredActionButton(int mouseX, int mouseY) {
+        if (exportButton != null && exportButton.isMouseOver(mouseX, mouseY)) {
+            return exportButton;
+        }
+        if (exportImageButton != null && exportImageButton.isMouseOver(mouseX, mouseY)) {
+            return exportImageButton;
+        }
+        return null;
     }
 
     private void renderTreeLayer(int renderWidth, int renderHeight, float scale, double renderOffX, double renderOffY,
@@ -223,40 +265,57 @@ public class GuiRecipeTree extends GuiScreen {
         double worldMouseX = 0;
         double worldMouseY = 0;
         hoveredNode = null;
+        hoveredNodeArea = HoverArea.NONE;
         hoveredCost = null;
+        Set<MaterialNode> highlightedChildNodes = new HashSet<>();
+        MaterialNode highlightedNode = null;
         if (interactive) {
-            worldMouseX = (mouseX - renderWidth / 2.0 - renderOffX) / scale;
-            worldMouseY = (mouseY - renderHeight / 3.0 - renderOffY) / scale;
+            worldMouseX = (mouseX - renderWidth / 2.0) / scale - renderOffX;
+            worldMouseY = (mouseY - renderHeight / 2.0) / scale - renderOffY;
+            updateHoveredNode(worldMouseX, worldMouseY);
+            if (hoveredNode != null && hoveredNodeArea == HoverArea.ITEM) {
+                highlightedNode = hoveredNode.materialNode;
+                collectVisibleChildNodes(highlightedNode, highlightedChildNodes);
+            }
         }
 
         for (TreeNode node : nodes) {
             if (node.materialNode.children != null && node.materialNode.state == FoldState.EXPANDED
                 && node.materialNode.recipe != null) {
-                int parentCenterX = node.x + node.midOffset;
-                int parentBottomY = node.y + 20;
+                int parentCenterX = node.getCenterX();
+                int parentBottomY = node.getBottomY();
 
                 for (MaterialNode child : node.materialNode.children) {
                     TreeNode childNode = findTreeNode(child);
                     if (childNode != null) {
-                        int childCenterX = childNode.x + childNode.midOffset;
-                        int childTopY = childNode.y;
-                        int lineColor = getLineColor(child);
-                        int midY = (parentBottomY + childTopY) / 2;
-                        TreeRenderer.drawLine(parentCenterX, parentBottomY, parentCenterX, midY, lineColor);
-                        TreeRenderer.drawLine(parentCenterX, midY, childCenterX, midY, lineColor);
-                        TreeRenderer.drawLine(childCenterX, midY, childCenterX, childTopY, lineColor);
+                        drawConnection(node, childNode, getLineColor(child));
+                    }
+                }
+            }
+        }
+
+        if (highlightedNode != null) {
+            for (TreeNode node : nodes) {
+                if (node.materialNode.children != null && node.materialNode.state == FoldState.EXPANDED
+                    && node.materialNode.recipe != null) {
+                    for (MaterialNode child : node.materialNode.children) {
+                        if (!shouldHighlightTrace(node.materialNode, child, highlightedNode)) {
+                            continue;
+                        }
+                        TreeNode childNode = findTreeNode(child);
+                        if (childNode != null) {
+                            int highlightColor = brightenColor(getLineColor(child), TRACE_HIGHLIGHT_STRENGTH);
+                            drawConnection(node, childNode, highlightColor);
+                        }
                     }
                 }
             }
         }
 
         for (TreeNode node : nodes) {
-            drawNode(node, opaqueNodeBackgrounds);
-            if (interactive && worldMouseX >= node.x && worldMouseX < node.x + node.width
-                && worldMouseY >= node.y
-                && worldMouseY < node.y + 20) {
-                hoveredNode = node;
-            }
+            boolean highlightItem = interactive && hoveredNodeArea == HoverArea.ITEM && node == hoveredNode;
+            boolean highlightChild = highlightedChildNodes.contains(node.materialNode);
+            drawNode(node, opaqueNodeBackgrounds, highlightItem, highlightChild);
         }
 
         if (!costs.isEmpty()) {
@@ -327,13 +386,16 @@ public class GuiRecipeTree extends GuiScreen {
             }
         }
 
-        // Draw text tooltip first
         drawHoveringText(tooltip, mouseX, mouseY, fontRendererObj);
+    }
 
-        // Draw recipe preview below the text tooltip (like NEI's favorite recipe tooltip)
-        if (mn.recipe != null) {
-            drawRecipePreview(mn.recipe, mouseX, mouseY, tooltip.size());
+    private void drawRecipeTooltip(TreeNode treeNode, int mouseX, int mouseY) {
+        MaterialNode materialNode = treeNode.materialNode;
+        if (materialNode.recipe == null) {
+            clearRecipeTooltipPreview();
+            return;
         }
+        drawRecipePreview(materialNode.recipe, mouseX, mouseY, 0);
     }
 
     private void drawCostTooltip(CostEntry cost, int mouseX, int mouseY) {
@@ -343,60 +405,203 @@ public class GuiRecipeTree extends GuiScreen {
         drawHoveringText(tooltip, mouseX, mouseY, fontRendererObj);
     }
 
-    private void drawNode(TreeNode node, boolean opaqueBackground) {
+    private void clearRecipeTooltipPreview() {
+        recipeTooltipHandler = null;
+        recipeTooltipRef = null;
+    }
+
+    private HoverArea getHoverArea(TreeNode node, double worldMouseX, double worldMouseY) {
+        if (node.containsRecipe(worldMouseX, worldMouseY)) {
+            return HoverArea.RECIPE;
+        }
+        if (node.containsItem(worldMouseX, worldMouseY)) {
+            return HoverArea.ITEM;
+        }
+        if (node.containsFrame(worldMouseX, worldMouseY)) {
+            return HoverArea.FRAME;
+        }
+        return HoverArea.NONE;
+    }
+
+    private void updateHoveredNode(double worldMouseX, double worldMouseY) {
+        for (TreeNode node : nodes) {
+            HoverArea hoverArea = getHoverArea(node, worldMouseX, worldMouseY);
+            if (hoverArea != HoverArea.NONE) {
+                hoveredNode = node;
+                hoveredNodeArea = hoverArea;
+            }
+        }
+    }
+
+    private void collectVisibleChildNodes(MaterialNode node, Set<MaterialNode> childNodes) {
+        if (node == null || node.children == null || node.children.isEmpty() || node.state != FoldState.EXPANDED
+            || node.recipe == null) {
+            return;
+        }
+        for (MaterialNode child : node.children) {
+            if (findTreeNode(child) != null) {
+                childNodes.add(child);
+            }
+        }
+    }
+
+    private boolean shouldHighlightTrace(MaterialNode parent, MaterialNode child, MaterialNode highlightedNode) {
+        return highlightedNode != null && (parent == highlightedNode || child == highlightedNode);
+    }
+
+    private void drawConnection(TreeNode parentNode, TreeNode childNode, int lineColor) {
+        int parentCenterX = parentNode.getCenterX();
+        int parentBottomY = parentNode.getBottomY();
+        int childCenterX = childNode.getCenterX();
+        int childTopY = childNode.y;
+        int midY = (parentBottomY + childTopY) / 2;
+        TreeRenderer.drawLine(parentCenterX, parentBottomY, parentCenterX, midY, lineColor);
+        TreeRenderer.drawLine(parentCenterX, midY, childCenterX, midY, lineColor);
+        TreeRenderer.drawLine(childCenterX, midY, childCenterX, childTopY, lineColor);
+    }
+
+    private int brightenColor(int color, float strength) {
+        int alpha = color >>> 24;
+        int red = (color >> 16) & 0xFF;
+        int green = (color >> 8) & 0xFF;
+        int blue = color & 0xFF;
+        red += Math.round((0xFF - red) * strength);
+        green += Math.round((0xFF - green) * strength);
+        blue += Math.round((0xFF - blue) * strength);
+        return alpha << 24 | red << 16 | green << 8 | blue;
+    }
+
+    private int getNodeBorderColor(TreeNode node, int recipeCount) {
+        MaterialNode materialNode = node.materialNode;
+        if (node.chance != null && node.chance.chanced()) {
+            return CHANCED_BORDER_COLOR;
+        }
+        if (materialNode.recipe == null && recipeCount > 0) {
+            return SELECTABLE_BORDER_COLOR;
+        }
+        if (materialNode.recipe != null && materialNode.state == FoldState.COLLAPSED && materialNode.children != null
+            && !materialNode.children.isEmpty()) {
+            return COLLAPSED_BORDER_COLOR;
+        }
+        return NODE_BORDER_COLOR;
+    }
+
+    private void drawNodeFrame(TreeNode node, int borderColor) {
+        int x = node.x;
+        int y = node.y;
+        int width = node.width;
+        int height = TreeNode.FRAME_HEIGHT;
+        if (!node.hasRecipeIcon()) {
+            TreeRenderer.drawNodeBorder(x, y, width, height, borderColor);
+            return;
+        }
+
+        int iconX = node.getRecipeIconX();
+        int iconY = node.getRecipeIconY();
+        int overlapRight = Math.min(x + width, iconX + TreeNode.RECIPE_ICON_SIZE);
+        int overlapBottom = Math.min(y + height, iconY + TreeNode.RECIPE_ICON_SIZE);
+        int topCut = Math.max(0, overlapRight - x);
+        int leftCut = Math.max(0, overlapBottom - y);
+
+        if (topCut < width) {
+            Gui.drawRect(x + topCut, y, x + width, y + 1, borderColor);
+        }
+        Gui.drawRect(x, y + height - 1, x + width, y + height, borderColor);
+        if (leftCut < height) {
+            Gui.drawRect(x, y + leftCut, x + 1, y + height, borderColor);
+        }
+        Gui.drawRect(x + width - 1, y, x + width, y + height, borderColor);
+    }
+
+    private void drawRecipeIcon(TreeNode node, int borderColor) {
+        MaterialNode materialNode = node.materialNode;
+        if (materialNode.recipe == null) {
+            return;
+        }
+
+        int iconX = node.getRecipeIconX();
+        int iconY = node.getRecipeIconY();
+        TreeRenderer.drawNodeBackground(iconX, iconY, TreeNode.RECIPE_ICON_SIZE, TreeNode.RECIPE_ICON_SIZE, 0xCC101010);
+        TreeRenderer.drawNodeBorder(iconX, iconY, TreeNode.RECIPE_ICON_SIZE, TreeNode.RECIPE_ICON_SIZE, borderColor);
+        HandlerInfo handlerInfo = GuiRecipeTab.getHandlerInfo(materialNode.recipe.handler);
+        if (handlerInfo != null) {
+            DrawableResource image = handlerInfo.getImage();
+            if (image != null) {
+                GL11.glPushMatrix();
+                GL11.glTranslatef(iconX + 1.0F, iconY + 1.0F, 0.0F);
+                GL11.glScalef(0.4375F, 0.4375F, 1.0F);
+                GL11.glColor4f(0.92F, 0.92F, 0.92F, 0.95F);
+                image.draw(0, 0);
+                GL11.glPopMatrix();
+                GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+                return;
+            }
+
+            ItemStack stack = handlerInfo.getItemStack();
+            if (stack != null) {
+                GL11.glPushMatrix();
+                GL11.glTranslatef(iconX + 1.0F, iconY + 1.0F, 0.0F);
+                GL11.glScalef(0.4375F, 0.4375F, 1.0F);
+                TreeRenderer.drawItemStack(0, 0, stack);
+                GL11.glPopMatrix();
+                return;
+            }
+        }
+
+        GL11.glPushMatrix();
+        GL11.glScalef(0.4375F, 0.4375F, 1.0F);
+        TreeRenderer.drawCenteredText((int) ((iconX + TreeNode.RECIPE_ICON_SIZE / 2.0) / 0.4375F),
+            (int) (iconY / 0.4375F), "R", 0xFFCCCCCC);
+        GL11.glPopMatrix();
+    }
+
+    private String getNodeAmountText(TreeNode node) {
+        return TreeLayout.getNodeAmountText(node.amount, node.chance, true);
+    }
+
+    private void drawNode(TreeNode node, boolean opaqueBackground, boolean highlightItem, boolean highlightChild) {
         MaterialNode mn = node.materialNode;
         int x = node.x;
         int y = node.y;
         int recipeCount = RecipeLookup.getRecipeCount(mn.ingredient);
+        int itemIconX = node.getItemIconX();
+        int itemIconY = node.getItemIconY();
 
         // Node background
-        int bgColor = 0x88333333;
-        if (mn.catalyst) {
-            bgColor = 0x88000055; // Blue tint for catalysts
-        } else if (mn.progress == ProgressState.COMPLETED) {
-            bgColor = 0x88005500;
-        } else if (mn.progress == ProgressState.PARTIAL) {
-            bgColor = 0x88553300;
-        }
+        int bgColor = NODE_BACKGROUND_COLOR;
         if (opaqueBackground) {
             bgColor = 0xFF000000 | (bgColor & 0x00FFFFFF);
         }
-        TreeRenderer.drawNodeBackground(x + 1, y + 1, TreeLayout.NODE_WIDTH - 2, 18, bgColor);
+        TreeRenderer.drawNodeBackground(x + 1, y + 1, node.width - 2, TreeNode.FRAME_HEIGHT - 2, bgColor);
 
         // Node border
-        int borderColor = 0xFF555555;
+        int borderColor = getNodeBorderColor(node, recipeCount);
+
+        drawNodeFrame(node, borderColor);
+        if (highlightChild && node.width > 2 && TreeNode.FRAME_HEIGHT > 2) {
+            TreeRenderer.drawNodeBorder(x + 1, y + 1, node.width - 2, TreeNode.FRAME_HEIGHT - 2,
+                brightenColor(borderColor, CHILD_HIGHLIGHT_STRENGTH));
+        }
+
         if (mn.recipe != null) {
-            borderColor = 0xFF888888;
-        }
-        if (mn.catalyst) {
-            borderColor = 0xFF5555FF; // Blue border for catalysts
-        }
-        if (node.chance != null && node.chance.chanced()) {
-            borderColor = 0xFFFFAA00;
-        }
-        if (mn.state == FoldState.COLLAPSED && mn.recipe != null) {
-            borderColor = 0xFF4488FF;
-        }
-        if (mn.recipe == null && recipeCount > 0) {
-            borderColor = 0xFF55FF55; // Green: expandable
+            drawRecipeIcon(node, borderColor);
         }
 
-        TreeRenderer.drawNodeBorder(x, y, TreeLayout.NODE_WIDTH, 20, borderColor);
-
-        // Item icon — cycle through permutations like EMI (1 second per variant)
+        // Item icon with EMI-style amount overlay
         ItemStack displayStack = getDisplayStack(mn);
-        TreeRenderer.drawItemStack(x + 7, y + 2, displayStack);
-
-        // Amount text below node (always shown)
-        String amountText = String.valueOf(node.amount);
-        TreeRenderer.drawCenteredText(x + TreeLayout.NODE_WIDTH / 2, y + 22, amountText, 0xFFCCCCCC);
+        TreeRenderer.drawItemStack(itemIconX, itemIconY, displayStack, getNodeAmountText(node));
+        if (highlightItem) {
+            TreeRenderer.drawNodeBorder(itemIconX - 1, itemIconY - 1, TreeNode.ICON_SIZE + 2, TreeNode.ICON_SIZE + 2,
+                ITEM_HIGHLIGHT_COLOR);
+        }
 
         // Fold/expand indicator
         if (mn.recipe != null && mn.children != null && !mn.children.isEmpty()) {
             String foldText = mn.state == FoldState.COLLAPSED ? "+" : "-";
-            TreeRenderer.drawAmountText(x + TreeLayout.NODE_WIDTH - 6, y + 1, foldText, 0xFF888888);
+            TreeRenderer.drawAmountText(x + node.width - 6, y + 1, foldText,
+                mn.state == FoldState.COLLAPSED ? COLLAPSED_BORDER_COLOR : NODE_BORDER_COLOR);
         } else if (mn.recipe == null && recipeCount > 0) {
-            TreeRenderer.drawAmountText(x + TreeLayout.NODE_WIDTH - 6, y + 1, "+", 0xFF55FF55);
+            TreeRenderer.drawAmountText(x + node.width - 6, y + 1, "+", SELECTABLE_BORDER_COLOR);
         }
 
         // Catalyst indicator
@@ -468,10 +673,7 @@ public class GuiRecipeTree extends GuiScreen {
     }
 
     private int getLineColor(MaterialNode child) {
-        if (child.progress == ProgressState.COMPLETED) return 0xFF00AA00;
-        if (child.progress == ProgressState.PARTIAL) return 0xFFAA5500;
-        if (child.catalyst) return 0xFF5555FF;
-        return 0xFF666666;
+        return NODE_LINE_COLOR;
     }
 
     private TreeNode findTreeNode(MaterialNode materialNode) {
@@ -498,7 +700,7 @@ public class GuiRecipeTree extends GuiScreen {
         if (hoveredNode != null) {
             MaterialNode mn = hoveredNode.materialNode;
 
-            if (mouseButton == 1) {
+            if (mouseButton == 1 && mn.recipe != null) {
                 // RMB: matches EMI exactly
                 if (isShiftKeyDown()) {
                     // Shift+RMB: clear resolution (revert to raw material)
@@ -507,18 +709,25 @@ public class GuiRecipeTree extends GuiScreen {
                 } else if (mn.recipe != null && mn.children != null && !mn.children.isEmpty()) {
                     // RMB on resolved node: toggle fold/expand
                     mn.state = mn.state == FoldState.EXPANDED ? FoldState.COLLAPSED : FoldState.EXPANDED;
+                    ItemStackKey key = ItemStackKey.of(mn.ingredient);
+                    if (key != null) {
+                        if (mn.state == FoldState.EXPANDED) {
+                            BoM.userExpandedNodes.add(key);
+                        } else {
+                            BoM.userExpandedNodes.remove(key);
+                        }
+                    }
                     recalculateTree();
                 }
                 return;
             }
 
-            if (mouseButton == 0) {
+            if (mouseButton == 0 && hoveredNodeArea == HoverArea.ITEM) {
                 if (isShiftKeyDown()) {
                     // Shift+LMB: auto-resolve with first available recipe (EMI's getAutoResolutions)
                     NEIRecipeRef found = RecipeLookup.findFirstRecipe(mn.ingredient);
                     if (found != null) {
-                        BoM.addResolution(mn.ingredient, found);
-                        BoM.addedRecipes.put(ItemStackKey.of(mn.ingredient), found);
+                        BoM.setResolution(mn.ingredient, found);
                         recalculateTree();
                     }
                 } else {
@@ -528,6 +737,10 @@ public class GuiRecipeTree extends GuiScreen {
                     BoM.pendingResolution = stack.copy();
                     GuiCraftingRecipe.openRecipeGui("item", stack.copy());
                 }
+                return;
+            }
+
+            if (mouseButton == 0 && hoveredNodeArea != HoverArea.NONE) {
                 return;
             }
         }
@@ -570,8 +783,9 @@ public class GuiRecipeTree extends GuiScreen {
     @Override
     protected void mouseClickMove(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick) {
         if (dragging) {
-            offX += mouseX - lastMouseX;
-            offY += mouseY - lastMouseY;
+            float scale = getScale();
+            offX += (mouseX - lastMouseX) / scale;
+            offY += (mouseY - lastMouseY) / scale;
             lastMouseX = mouseX;
             lastMouseY = mouseY;
         }
@@ -633,6 +847,7 @@ public class GuiRecipeTree extends GuiScreen {
         NEIRecipeRef rootRecipe = BoM.tree.goal.recipe;
         BoM.tree.resolutions.clear();
         BoM.addedRecipes.clear();
+        BoM.userExpandedNodes.clear();
         BoM.defaultRecipes.clear();
         BoM.recipeIndices.clear();
         // Re-add root recipe
@@ -739,8 +954,8 @@ public class GuiRecipeTree extends GuiScreen {
             int exportScale = Math.max(1, Math.min(EXPORT_SCALE, Math.min(widthScaleLimit, heightScaleLimit)));
             int renderWidth = logicalWidth * exportScale;
             int renderHeight = logicalHeight * exportScale;
-            double renderOffX = (EXPORT_PADDING - bounds.minX - logicalWidth / 2.0) * exportScale;
-            double renderOffY = (EXPORT_PADDING - bounds.minY - logicalHeight / 3.0) * exportScale;
+            double renderOffX = EXPORT_PADDING - bounds.minX - logicalWidth / 2.0;
+            double renderOffY = EXPORT_PADDING - bounds.minY - logicalHeight / 2.0;
 
             framebuffer = new Framebuffer(renderWidth, renderHeight, true);
             renderTreeToFramebuffer(framebuffer, renderWidth, renderHeight, renderOffX, renderOffY, exportScale);
@@ -841,13 +1056,7 @@ public class GuiRecipeTree extends GuiScreen {
         TreeSceneBounds bounds = new TreeSceneBounds();
 
         for (TreeNode node : nodes) {
-            bounds.include(node.x, node.y, node.x + TreeLayout.NODE_WIDTH, node.y + 20);
-
-            String amountText = String.valueOf(node.amount);
-            int amountWidth = fontRendererObj.getStringWidth(amountText);
-            int amountLeft = node.x + TreeLayout.NODE_WIDTH / 2 - amountWidth / 2;
-            bounds.include(amountLeft, node.y + 22, amountLeft + amountWidth, node.y + 22 + fontRendererObj.FONT_HEIGHT);
-
+            bounds.include(node.x, node.y, node.x + node.width, node.y + TreeNode.FRAME_HEIGHT);
         }
 
         if (!costs.isEmpty()) {
@@ -876,7 +1085,7 @@ public class GuiRecipeTree extends GuiScreen {
         }
 
         if (bounds.empty()) {
-            bounds.include(0, 0, TreeLayout.NODE_WIDTH, 20);
+            bounds.include(0, 0, TreeNode.RECIPE_NODE_BASE_WIDTH, TreeNode.FRAME_HEIGHT);
         }
         return bounds;
     }
@@ -889,36 +1098,41 @@ public class GuiRecipeTree extends GuiScreen {
     /**
      * Simple button for exporting recipe tree to NEI bookmarks.
      */
+    private enum ButtonIcon {
+
+        BOOKMARK,
+        EXPORT_IMAGE
+    }
+
     public static class GuiRecipeTreeButton extends codechicken.nei.GuiNEIButton {
 
         private final Runnable onExport;
-        private final String text;
+        private final ButtonIcon icon;
+        private final String titleKey;
+        private final String tooltipKey;
 
-        public GuiRecipeTreeButton(int x, int y, String text, Runnable onExport) {
-            super(-1, x, y, 16, 16, text);
-            this.text = text;
+        public GuiRecipeTreeButton(int x, int y, ButtonIcon icon, String titleKey, String tooltipKey,
+            Runnable onExport) {
+            super(-1, x, y, 18, 18, "");
+            this.icon = icon;
+            this.titleKey = titleKey;
+            this.tooltipKey = tooltipKey;
             this.onExport = onExport;
         }
 
         @Override
         public void drawButton(net.minecraft.client.Minecraft mc, int mouseX, int mouseY) {
-            // Draw button background using GuiDraw from codechicken.lib.gui
             int bgColor = 0xFF333333;
-            boolean hovered = mouseX >= xPosition && mouseX < xPosition + width
-                && mouseY >= yPosition
-                && mouseY < yPosition + height;
+            boolean hovered = isMouseOver(mouseX, mouseY);
             int borderColor = hovered ? 0xFFAAAAAA : 0xFF555555;
+            int iconColor = getTextColour(hovered);
 
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, width, height, bgColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, width, 1, borderColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition + height - 1, width, 1, borderColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, 1, height, borderColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition + width - 1, yPosition, 1, height, borderColor);
-
-            // Draw text centered
-            int textX = xPosition + (width - mc.fontRenderer.getStringWidth(text)) / 2;
-            int textY = yPosition + (height - mc.fontRenderer.FONT_HEIGHT) / 2;
-            mc.fontRenderer.drawStringWithShadow(text, textX, textY, 0xFFFFFFFF);
+            drawIcon(iconColor);
         }
 
         @Override
@@ -932,13 +1146,60 @@ public class GuiRecipeTree extends GuiScreen {
 
         public List<String> getToolTip() {
             List<String> tooltip = new ArrayList<>();
-            if ("B".equals(text)) {
-                tooltip.add(net.minecraft.util.StatCollector.translateToLocal("neirecipetree.button.bookmark.tooltip"));
-            } else if ("I".equals(text)) {
-                tooltip.add(
-                    net.minecraft.util.StatCollector.translateToLocal("neirecipetree.button.export_image.tooltip"));
-            }
+            tooltip.add("\u00a7e" + StatCollector.translateToLocal(titleKey));
+            tooltip.add("\u00a78" + StatCollector.translateToLocal(tooltipKey));
             return tooltip;
+        }
+
+        public boolean isMouseOver(int mouseX, int mouseY) {
+            return visible && mouseX >= xPosition && mouseX < xPosition + width
+                && mouseY >= yPosition
+                && mouseY < yPosition + height;
+        }
+
+        private void drawIcon(int color) {
+            if (icon == ButtonIcon.BOOKMARK) {
+                drawBookmarkIcon(color);
+            } else if (icon == ButtonIcon.EXPORT_IMAGE) {
+                drawExportImageIcon(color);
+            }
+        }
+
+        private void drawBookmarkIcon(int color) {
+            int left = xPosition + 5;
+            int top = yPosition + 3;
+            int right = xPosition + 12;
+            int bottom = yPosition + 12;
+
+            Gui.drawRect(left, top, right, top + 1, color);
+            Gui.drawRect(left, top, left + 1, bottom, color);
+            Gui.drawRect(right - 1, top, right, bottom, color);
+            Gui.drawRect(left, top + 1, right, bottom - 1, color & 0x44FFFFFF);
+            Gui.drawRect(left + 2, bottom, right - 2, bottom + 1, color);
+            Gui.drawRect(left + 3, bottom + 1, right - 3, bottom + 2, color);
+        }
+
+        private void drawExportImageIcon(int color) {
+            int left = xPosition + 4;
+            int top = yPosition + 5;
+            int right = xPosition + 13;
+            int bottom = yPosition + 12;
+
+            Gui.drawRect(left, top, right, top + 1, color);
+            Gui.drawRect(left, bottom - 1, right, bottom, color);
+            Gui.drawRect(left, top, left + 1, bottom, color);
+            Gui.drawRect(right - 1, top, right, bottom, color);
+            Gui.drawRect(left + 2, top + 2, left + 4, top + 4, color);
+            Gui.drawRect(left + 2, bottom - 3, left + 4, bottom - 2, color);
+            Gui.drawRect(left + 4, bottom - 4, left + 6, bottom - 3, color);
+            Gui.drawRect(left + 6, bottom - 5, right - 2, bottom - 4, color);
+
+            int arrowX = xPosition + 10;
+            int arrowY = yPosition + 2;
+            Gui.drawRect(arrowX, arrowY + 2, arrowX + 5, arrowY + 3, color);
+            Gui.drawRect(arrowX + 4, arrowY + 2, arrowX + 5, arrowY + 7, color);
+            Gui.drawRect(arrowX + 2, arrowY, arrowX + 5, arrowY + 1, color);
+            Gui.drawRect(arrowX + 3, arrowY + 1, arrowX + 5, arrowY + 2, color);
         }
     }
 

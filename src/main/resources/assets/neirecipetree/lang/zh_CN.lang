@@ -15,6 +15,7 @@ neirecipetree.tooltip.no_recipes=未找到配方
 neirecipetree.tooltip.lmb_select=左键浏览并选择配方
 neirecipetree.tooltip.shift_lmb_auto=Shift+ 左键自动选择
 neirecipetree.tooltip.handlers_available=%d 种机器类型可用
+neirecipetree.tooltip.rmb_toggle=右键折叠或展开
 neirecipetree.button.bookmark=导出到收藏夹
 neirecipetree.button.bookmark.tooltip=将当前合成树添加到 NEI 收藏夹
 neirecipetree.chat.bookmark_added=合成树已添加到收藏夹！

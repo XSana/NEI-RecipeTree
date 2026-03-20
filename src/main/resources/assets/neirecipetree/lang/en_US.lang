@@ -17,6 +17,7 @@ neirecipetree.tooltip.no_recipes=No recipes found
 neirecipetree.tooltip.lmb_select=LMB to browse & select recipe
 neirecipetree.tooltip.shift_lmb_auto=Shift+LMB to auto-select
 neirecipetree.tooltip.handlers_available=%d machine types available
+neirecipetree.tooltip.rmb_toggle=RMB to collapse or expand
 neirecipetree.chat.bookmark_added=Recipe tree added to bookmarks!
 neirecipetree.button.export_image=Export as Image
 neirecipetree.button.export_image.tooltip=Save current recipe tree as PNG image

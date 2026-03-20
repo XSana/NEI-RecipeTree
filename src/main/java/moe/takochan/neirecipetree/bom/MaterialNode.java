@@ -12,6 +12,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import codechicken.nei.PositionedStack;
+import moe.takochan.neirecipetree.bom.BoM;
 import moe.takochan.neirecipetree.recipe.ItemStackKey;
 import moe.takochan.neirecipetree.recipe.NEIRecipeRef;
 import moe.takochan.neirecipetree.recipe.RecipeAdapter;
@@ -111,6 +112,10 @@ public class MaterialNode {
         }
 
         if (resolvedRecipe == null) return; // No recipe available, leaf node
+
+        if (key != null && BoM.userExpandedNodes.contains(key)) {
+            this.state = FoldState.EXPANDED;
+        }
 
         // Cycle detection: compare by object reference (identity), like EMI
         if (used.containsKey(resolvedRecipe)) {
@@ -217,6 +222,42 @@ public class MaterialNode {
                     child.state = savedFoldStates.get(childKey);
                 }
                 children.add(child);
+            }
+        }
+    }
+
+    public void applyResolution(ItemStackKey targetKey, NEIRecipeRef recipeRef) {
+        ItemStackKey selfKey = ItemStackKey.of(ingredient);
+        if (selfKey != null && selfKey.equals(targetKey)) {
+            defineRecipe(recipeRef);
+            state = FoldState.EXPANDED;
+        }
+
+        if (children != null) {
+            for (MaterialNode child : children) {
+                child.applyResolution(targetKey, recipeRef);
+            }
+        }
+    }
+
+    public void pruneUnusedAutoResolutions(MaterialTree tree, boolean isRoot) {
+        ItemStackKey key = ItemStackKey.of(ingredient);
+        boolean manuallySelected = key != null && BoM.addedRecipes.containsKey(key);
+
+        if (!isRoot && totalNeeded <= 0 && !manuallySelected) {
+            recipe = null;
+            children = null;
+            divisor = 1;
+            state = FoldState.COLLAPSED;
+            if (key != null) {
+                BoM.userExpandedNodes.remove(key);
+            }
+            return;
+        }
+
+        if (children != null) {
+            for (MaterialNode child : children) {
+                child.pruneUnusedAutoResolutions(tree, false);
             }
         }
     }

@@ -16,8 +16,9 @@ public class TreeRenderer {
 
     public static void setupZoom(float scale, double offX, double offY, int screenWidth, int screenHeight) {
         GL11.glPushMatrix();
-        GL11.glTranslated(screenWidth / 2.0 + offX, screenHeight / 3.0 + offY, 0);
+        GL11.glTranslated(screenWidth / 2.0, screenHeight / 2.0, 0);
         GL11.glScalef(scale, scale, 1);
+        GL11.glTranslated(offX, offY, 0);
     }
 
     public static void teardownZoom() {
@@ -30,22 +31,36 @@ public class TreeRenderer {
             // Vertical line
             int minY = Math.min(y1, y2);
             int maxY = Math.max(y1, y2);
-            Gui.drawRect(x1, minY, x1 + 1, maxY, color);
+            Gui.drawRect(x1, minY, x1 + 1, maxY + 1, color);
         } else if (y1 == y2) {
             // Horizontal line
             int minX = Math.min(x1, x2);
             int maxX = Math.max(x1, x2);
-            Gui.drawRect(minX, y1, maxX, y1 + 1, color);
+            Gui.drawRect(minX, y1, maxX + 1, y1 + 1, color);
         } else {
             // L-shaped connection: vertical then horizontal
             int midY = y2;
-            Gui.drawRect(x1, y1, x1 + 1, midY, color);
-            Gui.drawRect(Math.min(x1, x2), midY, Math.max(x1, x2), midY + 1, color);
+            int minY = Math.min(y1, midY);
+            int maxY = Math.max(y1, midY);
+            int minX = Math.min(x1, x2);
+            int maxX = Math.max(x1, x2);
+            Gui.drawRect(x1, minY, x1 + 1, maxY + 1, color);
+            Gui.drawRect(minX, midY, maxX + 1, midY + 1, color);
         }
     }
 
     public static void drawItemStack(int x, int y, ItemStack stack) {
-        if (stack == null || stack.getItem() == null) return;
+        drawItemStack(x, y, stack, null);
+    }
+
+    public static void drawItemStack(int x, int y, ItemStack stack, String amountText) {
+        if (stack == null || stack.getItem() == null) {
+            return;
+        }
+
+        ItemStack displayStack = stack.copy();
+        displayStack.stackSize = 1;
+        FontRenderer fontRenderer = Minecraft.getMinecraft().fontRenderer;
 
         GL11.glPushMatrix();
         GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
@@ -56,16 +71,28 @@ public class TreeRenderer {
             Minecraft.getMinecraft().fontRenderer,
             Minecraft.getMinecraft()
                 .getTextureManager(),
-            stack,
+            displayStack,
             x,
             y);
         renderItem.renderItemOverlayIntoGUI(
-            Minecraft.getMinecraft().fontRenderer,
+            fontRenderer,
             Minecraft.getMinecraft()
                 .getTextureManager(),
-            stack,
+            displayStack,
             x,
             y);
+
+        if (amountText != null && !amountText.isEmpty()) {
+            int width = fontRenderer.getStringWidth(amountText);
+            int textX = x + 16 - Math.min(14, width);
+            int textY = y + 9;
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            GL11.glDisable(GL11.GL_BLEND);
+            fontRenderer.drawStringWithShadow(amountText, textX, textY, 0xFFFFFFFF);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glEnable(GL11.GL_LIGHTING);
+        }
 
         RenderHelper.disableStandardItemLighting();
         GL11.glDisable(GL12.GL_RESCALE_NORMAL);

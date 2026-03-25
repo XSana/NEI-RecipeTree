@@ -13,10 +13,12 @@ import javax.imageio.ImageIO;
 
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.StatCollector;
 
 import org.apache.logging.log4j.LogManager;
@@ -25,6 +27,8 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
+import codechicken.nei.NEIClientConfig;
+import codechicken.nei.NEIClientUtils;
 import codechicken.nei.ItemPanels;
 import codechicken.nei.drawable.DrawableResource;
 import codechicken.nei.recipe.GuiCraftingRecipe;
@@ -49,6 +53,8 @@ public class GuiRecipeTree extends GuiScreen {
     private static final int EXPORT_PADDING = 24;
     private static final int EXPORT_BACKGROUND = 0xFF101018;
     private static final int EXPORT_SCALE = 4;
+    private static final ResourceLocation BUTTON_ICONS_TEXTURE = new ResourceLocation("neirecipetree",
+        "textures/gui/recipe_tree_buttons.png");
     private static final int NODE_BACKGROUND_COLOR = 0x88333333;
     private static final int NODE_BORDER_COLOR = 0xFF888888;
     private static final int NODE_LINE_COLOR = 0xFF727272;
@@ -58,6 +64,17 @@ public class GuiRecipeTree extends GuiScreen {
     private static final float TRACE_HIGHLIGHT_STRENGTH = 0.65F;
     private static final float CHILD_HIGHLIGHT_STRENGTH = 0.55F;
     private static final int ITEM_HIGHLIGHT_COLOR = 0xFFF4F0B8;
+    private static final int ACTION_BUTTON_SIZE = 18;
+    private static final int ACTION_BUTTON_GAP = 4;
+    private static final int ACTION_BUTTON_MARGIN = 4;
+    private static final float BUTTON_TEXTURE_WIDTH = 36.0F;
+    private static final float BUTTON_TEXTURE_HEIGHT = 18.0F;
+    private static final int BATCH_PANEL_WIDTH = 92;
+    private static final int BATCH_PANEL_HEIGHT = 24;
+    private static final int BATCH_PANEL_MARGIN_RIGHT = 4;
+    private static final int BATCH_PANEL_Y = ACTION_BUTTON_MARGIN + ACTION_BUTTON_SIZE + ACTION_BUTTON_GAP;
+    private static final long MAX_BATCH_AMOUNT = 10000L;
+    private static final float SMALL_TEXT_SCALE = 0.75F;
     private static int zoom = 0;
     private double offX = 0;
     private double offY = 0;
@@ -103,16 +120,13 @@ public class GuiRecipeTree extends GuiScreen {
         }
         recalculateTree();
 
-        // Add export to bookmarks button (top-right corner)
-        int buttonX = width - 22;
-        int buttonY = 4;
+        int buttonY = ACTION_BUTTON_MARGIN;
+        int buttonX = width - ACTION_BUTTON_MARGIN - ACTION_BUTTON_SIZE;
         exportButton = new GuiRecipeTreeButton(buttonX, buttonY, ButtonIcon.BOOKMARK,
             "neirecipetree.button.bookmark", "neirecipetree.button.bookmark.tooltip", this::exportToBookmarks);
 
-        // Add export to image button (next to bookmarks button)
-        int imgButtonX = width - 40;
-        int imgButtonY = 4;
-        exportImageButton = new GuiRecipeTreeButton(imgButtonX, imgButtonY, ButtonIcon.EXPORT_IMAGE,
+        int imgButtonX = buttonX - ACTION_BUTTON_GAP - ACTION_BUTTON_SIZE;
+        exportImageButton = new GuiRecipeTreeButton(imgButtonX, buttonY, ButtonIcon.EXPORT_IMAGE,
             "neirecipetree.button.export_image", "neirecipetree.button.export_image.tooltip", this::exportToImage);
 
         buttonList.add(exportButton);
@@ -211,21 +225,8 @@ public class GuiRecipeTree extends GuiScreen {
 
         renderTreeLayer(width, height, getScale(), offX, offY, true, false, mouseX, mouseY);
 
-        // Draw batch counter (screen space)
-        String batchText = "x" + BoM.tree.batches;
-        int batchX = width / 2 + 20;
-        int batchY = 10;
-        drawRect(
-            batchX - 2,
-            batchY - 2,
-            batchX + fontRendererObj.getStringWidth(batchText) + 4,
-            batchY + 12,
-            0x88000000);
-        fontRendererObj.drawStringWithShadow(batchText, batchX, batchY, 0xFFFFFFFF);
-
-        // Draw help text (localized)
-        String helpText = "\u00a77" + StatCollector.translateToLocal("neirecipetree.help");
-        fontRendererObj.drawStringWithShadow(helpText, 4, height - 12, 0xFF666666);
+        drawBatchPanel(mouseX, mouseY);
+        drawHelpOverlay();
 
         // Draw buttons (super.drawScreen renders buttonList)
         super.drawScreen(mouseX, mouseY, partialTicks);
@@ -235,6 +236,9 @@ public class GuiRecipeTree extends GuiScreen {
         if (hoveredActionButton != null) {
             clearRecipeTooltipPreview();
             drawHoveringText(hoveredActionButton.getToolTip(), mouseX, mouseY, fontRendererObj);
+        } else if (isMouseOverBatchPanel(mouseX, mouseY)) {
+            clearRecipeTooltipPreview();
+            drawHoveringText(getBatchPanelTooltip(), mouseX, mouseY, fontRendererObj);
         } else if (hoveredNode != null && hoveredNodeArea == HoverArea.ITEM) {
             drawNodeTooltip(hoveredNode, mouseX, mouseY);
         } else if (hoveredNode != null && hoveredNodeArea == HoverArea.RECIPE) {
@@ -256,6 +260,91 @@ public class GuiRecipeTree extends GuiScreen {
             return exportImageButton;
         }
         return null;
+    }
+
+    private void drawHelpOverlay() {
+        String[] lines = new String[] {
+            StatCollector.translateToLocal("neirecipetree.help.line1"),
+            StatCollector.translateToLocal("neirecipetree.help.line2"),
+            StatCollector.translateToLocal("neirecipetree.help.line3"),
+            StatCollector.translateToLocal("neirecipetree.help.line4") };
+        float lineHeight = fontRendererObj.FONT_HEIGHT * SMALL_TEXT_SCALE + 1.0F;
+        int boxWidth = 0;
+        for (String line : lines) {
+            boxWidth = Math.max(boxWidth, Math.round(fontRendererObj.getStringWidth(line) * SMALL_TEXT_SCALE));
+        }
+        int boxHeight = Math.round(lineHeight * lines.length) + 4;
+        int boxX = 4;
+        int boxY = height - boxHeight - 4;
+        drawRect(boxX - 2, boxY - 2, boxX + boxWidth + 4, boxY + boxHeight, 0x66000000);
+        for (int i = 0; i < lines.length; i++) {
+            drawScaledString(lines[i], boxX, boxY + i * lineHeight, 0xFFB0B0B0, SMALL_TEXT_SCALE);
+        }
+    }
+
+    private void drawBatchPanel(int mouseX, int mouseY) {
+        int panelX = getBatchPanelX();
+        int panelY = getBatchPanelY();
+        boolean hovered = isMouseOverBatchPanel(mouseX, mouseY);
+        int borderColor = hovered ? 0xFFAAAAAA : 0xFF555555;
+        int titleColor = hovered ? 0xFFE8E8E8 : 0xFFC8C8C8;
+        String title = StatCollector.translateToLocal("neirecipetree.batch.title");
+        String value = Long.toString(BoM.tree.batches);
+        String hint = StatCollector.translateToLocal("neirecipetree.batch.hint");
+
+        drawRect(panelX, panelY, panelX + BATCH_PANEL_WIDTH, panelY + BATCH_PANEL_HEIGHT, 0x88000000);
+        drawRect(panelX, panelY, panelX + BATCH_PANEL_WIDTH, panelY + 1, borderColor);
+        drawRect(panelX, panelY + BATCH_PANEL_HEIGHT - 1, panelX + BATCH_PANEL_WIDTH, panelY + BATCH_PANEL_HEIGHT,
+            borderColor);
+        drawRect(panelX, panelY, panelX + 1, panelY + BATCH_PANEL_HEIGHT, borderColor);
+        drawRect(panelX + BATCH_PANEL_WIDTH - 1, panelY, panelX + BATCH_PANEL_WIDTH, panelY + BATCH_PANEL_HEIGHT,
+            borderColor);
+
+        fontRendererObj.drawStringWithShadow(title, panelX + 6, panelY + 4, titleColor);
+        fontRendererObj.drawStringWithShadow(value, panelX + BATCH_PANEL_WIDTH - 6 - fontRendererObj.getStringWidth(value),
+            panelY + 4, 0xFFFFFFFF);
+        drawScaledString(hint, panelX + 6, panelY + 15, 0xFF9A9A9A, SMALL_TEXT_SCALE);
+    }
+
+    private void drawScaledString(String text, float x, float y, int color, float scale) {
+        GL11.glPushMatrix();
+        GL11.glScalef(scale, scale, 1.0F);
+        fontRendererObj.drawStringWithShadow(text, Math.round(x / scale), Math.round(y / scale), color);
+        GL11.glPopMatrix();
+    }
+
+    private int getBatchPanelX() {
+        return width - BATCH_PANEL_WIDTH - BATCH_PANEL_MARGIN_RIGHT;
+    }
+
+    private int getBatchPanelY() {
+        return BATCH_PANEL_Y;
+    }
+
+    private boolean isMouseOverBatchPanel(int mouseX, int mouseY) {
+        int panelX = getBatchPanelX();
+        int panelY = getBatchPanelY();
+        return mouseX >= panelX && mouseX < panelX + BATCH_PANEL_WIDTH
+            && mouseY >= panelY
+            && mouseY < panelY + BATCH_PANEL_HEIGHT;
+    }
+
+    private List<String> getBatchPanelTooltip() {
+        List<String> tooltip = new ArrayList<>();
+        tooltip.add("\u00a7e" + StatCollector.translateToLocal("neirecipetree.batch.title"));
+        tooltip.add("\u00a78" + StatCollector.translateToLocal("neirecipetree.batch.tooltip.line1"));
+        tooltip.add("\u00a78" + StatCollector.translateToLocal("neirecipetree.batch.tooltip.line2"));
+        return tooltip;
+    }
+
+    private long getBatchScrollStep() {
+        if (NEIClientConfig.showItemQuantityWidget()) {
+            int quantity = NEIClientConfig.getItemQuantity();
+            if (quantity > 0) {
+                return quantity;
+            }
+        }
+        return 64L;
     }
 
     private void renderTreeLayer(int renderWidth, int renderHeight, float scale, double renderOffX, double renderOffY,
@@ -757,20 +846,6 @@ public class GuiRecipeTree extends GuiScreen {
             lastMouseY = mouseY;
         }
 
-        // Check batch counter click
-        if (mouseButton == 0 && BoM.tree != null) {
-            String batchText = "x" + BoM.tree.batches;
-            int batchX = width / 2 + 20;
-            int batchY = 10;
-            int batchW = fontRendererObj.getStringWidth(batchText) + 6;
-            if (mouseX >= batchX - 2 && mouseX < batchX + batchW && mouseY >= batchY - 2 && mouseY < batchY + 14) {
-                long ideal = BoM.tree.cost.getIdealBatch(BoM.tree.goal, 1, BoM.tree.goal.amount);
-                if (ideal > 0 && ideal <= 10000) {
-                    BoM.tree.batches = ideal;
-                    recalculateTree();
-                }
-            }
-        }
     }
 
     @Override
@@ -800,28 +875,16 @@ public class GuiRecipeTree extends GuiScreen {
             int mouseX = Mouse.getEventX() * sr.getScaledWidth() / mc.displayWidth;
             int mouseY = sr.getScaledHeight() - Mouse.getEventY() * sr.getScaledHeight() / mc.displayHeight - 1;
 
-            String batchText = "x" + (BoM.tree != null ? BoM.tree.batches : 1);
-            int batchX = width / 2 + 20;
-            int batchY = 10;
-            int batchW = fontRendererObj.getStringWidth(batchText) + 6;
-
-            if (mouseX >= batchX - 2 && mouseX < batchX + batchW && mouseY >= batchY - 2 && mouseY < batchY + 14) {
-                if (BoM.tree != null) {
-                    if (isCtrlKeyDown()) {
-                        BoM.tree.batches = scroll > 0 ? Math.min(BoM.tree.batches * 2, 10000)
-                            : Math.max(BoM.tree.batches / 2, 1);
-                    } else if (isShiftKeyDown()) {
-                        BoM.tree.batches = scroll > 0 ? Math.min(BoM.tree.batches + 16, 10000)
-                            : Math.max(BoM.tree.batches - 16, 1);
-                    } else {
-                        BoM.tree.batches = scroll > 0 ? Math.min(BoM.tree.batches + 1, 10000)
-                            : Math.max(BoM.tree.batches - 1, 1);
-                    }
+            if (isMouseOverBatchPanel(mouseX, mouseY)) {
+                if (BoM.tree != null && isCtrlKeyDown()) {
+                    long multiplier = NEIClientUtils.altKey() ? getBatchScrollStep() : 1L;
+                    long delta = scroll > 0 ? multiplier : -multiplier;
+                    BoM.tree.batches = Math.max(1L, Math.min(MAX_BATCH_AMOUNT, BoM.tree.batches + delta));
                     recalculateTree();
+                    return;
                 }
-            } else {
-                zoom = scroll > 0 ? Math.min(zoom + 1, 8) : Math.max(zoom - 1, -8);
             }
+            zoom = scroll > 0 ? Math.min(zoom + 1, 8) : Math.max(zoom - 1, -8);
         }
     }
 
@@ -1125,14 +1188,13 @@ public class GuiRecipeTree extends GuiScreen {
             int bgColor = 0xFF333333;
             boolean hovered = isMouseOver(mouseX, mouseY);
             int borderColor = hovered ? 0xFFAAAAAA : 0xFF555555;
-            int iconColor = getTextColour(hovered);
 
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, width, height, bgColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, width, 1, borderColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition + height - 1, width, 1, borderColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition, yPosition, 1, height, borderColor);
             codechicken.lib.gui.GuiDraw.drawRect(xPosition + width - 1, yPosition, 1, height, borderColor);
-            drawIcon(iconColor);
+            drawIcon(mc, hovered);
         }
 
         @Override
@@ -1157,49 +1219,38 @@ public class GuiRecipeTree extends GuiScreen {
                 && mouseY < yPosition + height;
         }
 
-        private void drawIcon(int color) {
-            if (icon == ButtonIcon.BOOKMARK) {
-                drawBookmarkIcon(color);
-            } else if (icon == ButtonIcon.EXPORT_IMAGE) {
-                drawExportImageIcon(color);
-            }
+        private void drawIcon(net.minecraft.client.Minecraft mc, boolean hovered) {
+            int iconU = icon == ButtonIcon.BOOKMARK ? 0 : ACTION_BUTTON_SIZE;
+            mc.getTextureManager().bindTexture(BUTTON_ICONS_TEXTURE);
+            GL11.glEnable(GL11.GL_BLEND);
+            OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+            GL11.glColor4f(hovered ? 1.0F : 0.82F, hovered ? 1.0F : 0.82F, hovered ? 1.0F : 0.82F, 1.0F);
+            drawCustomSizedTexturedRect(
+                xPosition,
+                yPosition,
+                iconU,
+                0,
+                ACTION_BUTTON_SIZE,
+                ACTION_BUTTON_SIZE,
+                BUTTON_TEXTURE_WIDTH,
+                BUTTON_TEXTURE_HEIGHT);
+            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         }
 
-        private void drawBookmarkIcon(int color) {
-            int left = xPosition + 5;
-            int top = yPosition + 3;
-            int right = xPosition + 12;
-            int bottom = yPosition + 12;
+        private void drawCustomSizedTexturedRect(int x, int y, int u, int v, int width, int height, float textureWidth,
+            float textureHeight) {
+            float minU = u / textureWidth;
+            float maxU = (u + width) / textureWidth;
+            float minV = v / textureHeight;
+            float maxV = (v + height) / textureHeight;
 
-            Gui.drawRect(left, top, right, top + 1, color);
-            Gui.drawRect(left, top, left + 1, bottom, color);
-            Gui.drawRect(right - 1, top, right, bottom, color);
-            Gui.drawRect(left, top + 1, right, bottom - 1, color & 0x44FFFFFF);
-            Gui.drawRect(left + 2, bottom, right - 2, bottom + 1, color);
-            Gui.drawRect(left + 3, bottom + 1, right - 3, bottom + 2, color);
-        }
-
-        private void drawExportImageIcon(int color) {
-            int left = xPosition + 4;
-            int top = yPosition + 5;
-            int right = xPosition + 13;
-            int bottom = yPosition + 12;
-
-            Gui.drawRect(left, top, right, top + 1, color);
-            Gui.drawRect(left, bottom - 1, right, bottom, color);
-            Gui.drawRect(left, top, left + 1, bottom, color);
-            Gui.drawRect(right - 1, top, right, bottom, color);
-            Gui.drawRect(left + 2, top + 2, left + 4, top + 4, color);
-            Gui.drawRect(left + 2, bottom - 3, left + 4, bottom - 2, color);
-            Gui.drawRect(left + 4, bottom - 4, left + 6, bottom - 3, color);
-            Gui.drawRect(left + 6, bottom - 5, right - 2, bottom - 4, color);
-
-            int arrowX = xPosition + 10;
-            int arrowY = yPosition + 2;
-            Gui.drawRect(arrowX, arrowY + 2, arrowX + 5, arrowY + 3, color);
-            Gui.drawRect(arrowX + 4, arrowY + 2, arrowX + 5, arrowY + 7, color);
-            Gui.drawRect(arrowX + 2, arrowY, arrowX + 5, arrowY + 1, color);
-            Gui.drawRect(arrowX + 3, arrowY + 1, arrowX + 5, arrowY + 2, color);
+            Tessellator tessellator = Tessellator.instance;
+            tessellator.startDrawingQuads();
+            tessellator.addVertexWithUV(x, y + height, 0, minU, maxV);
+            tessellator.addVertexWithUV(x + width, y + height, 0, maxU, maxV);
+            tessellator.addVertexWithUV(x + width, y, 0, maxU, minV);
+            tessellator.addVertexWithUV(x, y, 0, minU, minV);
+            tessellator.draw();
         }
     }
 

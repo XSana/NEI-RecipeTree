@@ -1,6 +1,6 @@
 # NEI-RecipeTree
 
-简体中文 | English
+[简体中文](#中文) | [English](#english)
 
 NEI-RecipeTree is a recipe tree / bill of materials viewer for `NotEnoughItems` on Minecraft `1.7.10`, adapted from the recipe tree idea in EMI and rebuilt for the NEI workflow.
 

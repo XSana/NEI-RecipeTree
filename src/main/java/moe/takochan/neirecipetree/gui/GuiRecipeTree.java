@@ -959,7 +959,9 @@ public class GuiRecipeTree extends GuiScreen {
             // Create a new bookmark group with DEFAULT view mode and crafting enabled
             int groupId = grid.addGroup(
                 new codechicken.nei.bookmark.BookmarkGroup(
-                    codechicken.nei.BookmarkPanel.BookmarkViewMode.TODO_LIST,
+                    moe.takochan.neirecipetree.nei.NEIRecipeTreeConfig.isBookmarkExpanded()
+                        ? codechicken.nei.BookmarkPanel.BookmarkViewMode.TODO_LIST
+                        : codechicken.nei.BookmarkPanel.BookmarkViewMode.DEFAULT,
                     true));
 
             // Add each recipe to the group

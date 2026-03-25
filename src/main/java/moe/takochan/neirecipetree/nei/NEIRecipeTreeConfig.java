@@ -11,7 +11,7 @@ import moe.takochan.neirecipetree.Tags;
 
 public class NEIRecipeTreeConfig implements IConfigureNEI {
 
-    private static final String TAG_BOOKMARK_EXPANDED = "inventory.recipetree.bookmarkExpanded";
+    private static final String TAG_BOOKMARK_EXPANDED = "recipetree.bookmarkExpanded";
 
     @Override
     public void loadConfig() {

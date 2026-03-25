@@ -732,8 +732,15 @@ public class GuiRecipeTree extends GuiScreen {
             recipeTooltipRef = recipe;
             try {
                 String handlerName = GuiRecipeTab.getHandlerInfo(recipe.handler).getHandlerName();
+                codechicken.nei.PositionedStack resultStack = recipe.handler.getResultStack(recipe.recipeIndex);
+                if (resultStack == null) {
+                    for (codechicken.nei.PositionedStack otherStack : recipe.handler.getOtherStacks(recipe.recipeIndex)) {
+                        resultStack = otherStack;
+                        break;
+                    }
+                }
                 Recipe.RecipeId recipeId = Recipe.RecipeId.of(
-                    recipe.handler.getResultStack(recipe.recipeIndex),
+                    resultStack,
                     handlerName,
                     recipe.handler.getIngredientStacks(recipe.recipeIndex));
                 recipeTooltipHandler = new RecipeTooltipLineHandler(recipeId);

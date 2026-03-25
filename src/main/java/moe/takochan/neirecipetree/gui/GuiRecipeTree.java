@@ -731,7 +731,11 @@ public class GuiRecipeTree extends GuiScreen {
         if (recipeTooltipRef != recipe) {
             recipeTooltipRef = recipe;
             try {
-                Recipe.RecipeId recipeId = Recipe.RecipeId.of(recipe.handler, recipe.recipeIndex);
+                String handlerName = GuiRecipeTab.getHandlerInfo(recipe.handler).getHandlerName();
+                Recipe.RecipeId recipeId = Recipe.RecipeId.of(
+                    recipe.handler.getResultStack(recipe.recipeIndex),
+                    handlerName,
+                    recipe.handler.getIngredientStacks(recipe.recipeIndex));
                 recipeTooltipHandler = new RecipeTooltipLineHandler(recipeId);
             } catch (Exception e) {
                 recipeTooltipHandler = null;

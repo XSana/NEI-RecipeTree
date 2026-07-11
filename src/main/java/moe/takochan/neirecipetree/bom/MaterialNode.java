@@ -3,6 +3,7 @@ package moe.takochan.neirecipetree.bom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -12,19 +13,20 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import codechicken.nei.PositionedStack;
-import moe.takochan.neirecipetree.bom.BoM;
 import moe.takochan.neirecipetree.recipe.ItemStackKey;
 import moe.takochan.neirecipetree.recipe.NEIRecipeRef;
 import moe.takochan.neirecipetree.recipe.RecipeAdapter;
+import moe.takochan.neirecipetree.recipe.RecipeInputKey;
 
 public class MaterialNode {
 
     private static final Logger LOG = LogManager.getLogger("neirecipetree");
     private static final int MAX_DEPTH = 64;
 
-    public final ItemStack ingredient;
+    public ItemStack ingredient;
     public final ItemStack[] permutations;
-    public final ItemStack remainder;
+    public ItemStack remainder;
+    public final List<RecipeInputKey> sourceInputKeys = new ArrayList<>();
     public NEIRecipeRef recipe;
     public List<MaterialNode> children;
     public float consumeChance = 1;
@@ -56,17 +58,27 @@ public class MaterialNode {
     }
 
     public MaterialNode(PositionedStack ps) {
-        ItemStack first = ps.items[0];
-        this.ingredient = first.copy();
+        this(ps, ps.items[0]);
+    }
+
+    public MaterialNode(PositionedStack ps, ItemStack selected) {
+        this(ps, selected, null);
+    }
+
+    public MaterialNode(PositionedStack ps, ItemStack selected, RecipeInputKey sourceInputKey) {
+        this.ingredient = selected.copy();
         this.ingredient.stackSize = 1;
-        this.amount = first.stackSize;
+        this.amount = selected.stackSize;
         this.permutations = RecipeAdapter.getPermutations(ps);
-        this.remainder = RecipeAdapter.getContainerItem(first);
+        this.remainder = RecipeAdapter.getContainerItem(selected);
         if (this.remainder != null) {
             this.remainderAmount = this.remainder.stackSize;
             this.remainder.stackSize = 1;
         }
-        this.catalyst = RecipeAdapter.isCatalyst(first);
+        this.catalyst = RecipeAdapter.isCatalyst(selected);
+        if (sourceInputKey != null) {
+            this.sourceInputKeys.add(sourceInputKey);
+        }
         // Catalysts default to collapsed since they are not consumed
         if (this.catalyst) {
             this.state = FoldState.COLLAPSED;
@@ -81,6 +93,7 @@ public class MaterialNode {
         this.amount = node.amount;
         this.divisor = node.divisor;
         this.remainderAmount = node.remainderAmount;
+        this.sourceInputKeys.addAll(node.sourceInputKeys);
     }
 
     public void recalculate(MaterialTree tree) {
@@ -197,16 +210,19 @@ public class MaterialNode {
         this.children = new ArrayList<>();
         List<PositionedStack> inputs = recipeRef.getInputs();
         if (inputs != null) {
-            outer: for (PositionedStack inputPs : inputs) {
+            outer: for (int inputIndex = 0; inputIndex < inputs.size(); inputIndex++) {
+                PositionedStack inputPs = inputs.get(inputIndex);
                 if (inputPs == null || inputPs.items.length == 0) continue;
 
-                ItemStack inputStack = inputPs.items[0];
+                ItemStack inputStack = getSelectedInput(recipeRef, inputIndex, inputPs);
                 if (inputStack == null || inputStack.getItem() == null) continue;
 
                 // Merge duplicate inputs
                 for (MaterialNode existing : children) {
-                    if (ItemStackKey.matches(inputStack, existing.ingredient)) {
+                    if (ItemStackKey.matches(inputStack, existing.ingredient)
+                        && existing.hasSamePermutations(inputPs)) {
                         existing.amount += inputStack.stackSize;
+                        existing.sourceInputKeys.add(RecipeInputKey.of(recipeRef, inputIndex));
                         ItemStack existingRemainder = RecipeAdapter.getContainerItem(inputStack);
                         if (existingRemainder != null) {
                             existing.remainderAmount += existingRemainder.stackSize;
@@ -215,7 +231,7 @@ public class MaterialNode {
                     }
                 }
 
-                MaterialNode child = new MaterialNode(inputPs);
+                MaterialNode child = new MaterialNode(inputPs, inputStack, RecipeInputKey.of(recipeRef, inputIndex));
                 // Restore fold state from previous children
                 ItemStackKey childKey = ItemStackKey.of(child.ingredient);
                 if (childKey != null && savedFoldStates.containsKey(childKey)) {
@@ -224,6 +240,70 @@ public class MaterialNode {
                 children.add(child);
             }
         }
+    }
+
+    public List<ItemStack> getUniquePermutations() {
+        Map<ItemStackKey, ItemStack> unique = new LinkedHashMap<>();
+        for (ItemStack candidate : permutations) {
+            ItemStackKey key = ItemStackKey.of(candidate);
+            if (key != null && !unique.containsKey(key)) {
+                unique.put(key, candidate.copy());
+            }
+        }
+        return new ArrayList<>(unique.values());
+    }
+
+    public boolean hasMultiplePermutations() {
+        return getUniquePermutations().size() > 1;
+    }
+
+    private boolean hasSamePermutations(PositionedStack input) {
+        Map<ItemStackKey, ItemStack> expected = new LinkedHashMap<>();
+        for (ItemStack candidate : input.items) {
+            ItemStackKey key = ItemStackKey.of(candidate);
+            if (key != null) expected.put(key, candidate);
+        }
+        List<ItemStack> current = getUniquePermutations();
+        if (current.size() != expected.size()) return false;
+        for (ItemStack candidate : current) {
+            if (!expected.containsKey(ItemStackKey.of(candidate))) return false;
+        }
+        return true;
+    }
+
+    public void selectIngredient(ItemStack selected) {
+        ItemStack oldIngredient = ingredient;
+        ingredient = selected.copy();
+        ingredient.stackSize = 1;
+        remainder = RecipeAdapter.getContainerItem(selected);
+        remainderAmount = 0;
+        if (remainder != null) {
+            remainderAmount = remainder.stackSize * Math.max(1, sourceInputKeys.size());
+            remainder.stackSize = 1;
+        }
+        catalyst = RecipeAdapter.isCatalyst(selected);
+        recipe = null;
+        children = null;
+        divisor = 1;
+        state = catalyst ? FoldState.COLLAPSED : FoldState.EXPANDED;
+        BoM.clearRecipeState(oldIngredient);
+    }
+
+    private ItemStack getSelectedInput(NEIRecipeRef recipeRef, int inputIndex, PositionedStack input) {
+        ItemStackKey selected = BoM.getInputSelection(recipeRef, inputIndex);
+        if (selected != null) {
+            for (ItemStack candidate : input.items) {
+                if (candidate != null && candidate.getItem() != null && selected.equals(ItemStackKey.of(candidate))) {
+                    return candidate;
+                }
+            }
+        }
+        for (ItemStack candidate : input.items) {
+            if (candidate != null && candidate.getItem() != null) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     public void applyResolution(ItemStackKey targetKey, NEIRecipeRef recipeRef) {

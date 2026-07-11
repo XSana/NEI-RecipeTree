@@ -1,3 +1,6 @@
+neirecipetree.ingredient.title=选择配方原料
+neirecipetree.ingredient.amount=需要数量：×%d（一次选择应用于全部）
+neirecipetree.ingredient.hint=先选择材料类型，再为该材料选择配方
 neirecipetree.button.tooltip=查看合成树
 neirecipetree.button.description=递归展开所有原材料
 neirecipetree.button.select=选择此配方

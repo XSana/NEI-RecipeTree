@@ -12,11 +12,11 @@ import java.util.Set;
 import javax.imageio.ImageIO;
 
 import net.minecraft.client.gui.Gui;
+import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.shader.Framebuffer;
-import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.StatCollector;
@@ -27,9 +27,9 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
+import codechicken.nei.ItemPanels;
 import codechicken.nei.NEIClientConfig;
 import codechicken.nei.NEIClientUtils;
-import codechicken.nei.ItemPanels;
 import codechicken.nei.drawable.DrawableResource;
 import codechicken.nei.recipe.GuiCraftingRecipe;
 import codechicken.nei.recipe.GuiRecipeTab;
@@ -42,7 +42,6 @@ import moe.takochan.neirecipetree.bom.ChanceState;
 import moe.takochan.neirecipetree.bom.FlatMaterialCost;
 import moe.takochan.neirecipetree.bom.FoldState;
 import moe.takochan.neirecipetree.bom.MaterialNode;
-import moe.takochan.neirecipetree.bom.ProgressState;
 import moe.takochan.neirecipetree.recipe.ItemStackKey;
 import moe.takochan.neirecipetree.recipe.NEIRecipeRef;
 import moe.takochan.neirecipetree.recipe.RecipeLookup;
@@ -53,7 +52,8 @@ public class GuiRecipeTree extends GuiScreen {
     private static final int EXPORT_PADDING = 24;
     private static final int EXPORT_BACKGROUND = 0xFF101018;
     private static final int EXPORT_SCALE = 4;
-    private static final ResourceLocation BUTTON_ICONS_TEXTURE = new ResourceLocation("neirecipetree",
+    private static final ResourceLocation BUTTON_ICONS_TEXTURE = new ResourceLocation(
+        "neirecipetree",
         "textures/gui/recipe_tree_buttons.png");
     private static final int NODE_BACKGROUND_COLOR = 0x88333333;
     private static final int NODE_BORDER_COLOR = 0xFF888888;
@@ -122,12 +122,22 @@ public class GuiRecipeTree extends GuiScreen {
 
         int buttonY = ACTION_BUTTON_MARGIN;
         int buttonX = width - ACTION_BUTTON_MARGIN - ACTION_BUTTON_SIZE;
-        exportButton = new GuiRecipeTreeButton(buttonX, buttonY, ButtonIcon.BOOKMARK,
-            "neirecipetree.button.bookmark", "neirecipetree.button.bookmark.tooltip", this::exportToBookmarks);
+        exportButton = new GuiRecipeTreeButton(
+            buttonX,
+            buttonY,
+            ButtonIcon.BOOKMARK,
+            "neirecipetree.button.bookmark",
+            "neirecipetree.button.bookmark.tooltip",
+            this::exportToBookmarks);
 
         int imgButtonX = buttonX - ACTION_BUTTON_GAP - ACTION_BUTTON_SIZE;
-        exportImageButton = new GuiRecipeTreeButton(imgButtonX, buttonY, ButtonIcon.EXPORT_IMAGE,
-            "neirecipetree.button.export_image", "neirecipetree.button.export_image.tooltip", this::exportToImage);
+        exportImageButton = new GuiRecipeTreeButton(
+            imgButtonX,
+            buttonY,
+            ButtonIcon.EXPORT_IMAGE,
+            "neirecipetree.button.export_image",
+            "neirecipetree.button.export_image.tooltip",
+            this::exportToImage);
 
         buttonList.add(exportButton);
         buttonList.add(exportImageButton);
@@ -263,8 +273,7 @@ public class GuiRecipeTree extends GuiScreen {
     }
 
     private void drawHelpOverlay() {
-        String[] lines = new String[] {
-            StatCollector.translateToLocal("neirecipetree.help.line1"),
+        String[] lines = new String[] { StatCollector.translateToLocal("neirecipetree.help.line1"),
             StatCollector.translateToLocal("neirecipetree.help.line2"),
             StatCollector.translateToLocal("neirecipetree.help.line3"),
             StatCollector.translateToLocal("neirecipetree.help.line4") };
@@ -294,15 +303,26 @@ public class GuiRecipeTree extends GuiScreen {
 
         drawRect(panelX, panelY, panelX + BATCH_PANEL_WIDTH, panelY + BATCH_PANEL_HEIGHT, 0x88000000);
         drawRect(panelX, panelY, panelX + BATCH_PANEL_WIDTH, panelY + 1, borderColor);
-        drawRect(panelX, panelY + BATCH_PANEL_HEIGHT - 1, panelX + BATCH_PANEL_WIDTH, panelY + BATCH_PANEL_HEIGHT,
+        drawRect(
+            panelX,
+            panelY + BATCH_PANEL_HEIGHT - 1,
+            panelX + BATCH_PANEL_WIDTH,
+            panelY + BATCH_PANEL_HEIGHT,
             borderColor);
         drawRect(panelX, panelY, panelX + 1, panelY + BATCH_PANEL_HEIGHT, borderColor);
-        drawRect(panelX + BATCH_PANEL_WIDTH - 1, panelY, panelX + BATCH_PANEL_WIDTH, panelY + BATCH_PANEL_HEIGHT,
+        drawRect(
+            panelX + BATCH_PANEL_WIDTH - 1,
+            panelY,
+            panelX + BATCH_PANEL_WIDTH,
+            panelY + BATCH_PANEL_HEIGHT,
             borderColor);
 
         fontRendererObj.drawStringWithShadow(title, panelX + 6, panelY + 4, titleColor);
-        fontRendererObj.drawStringWithShadow(value, panelX + BATCH_PANEL_WIDTH - 6 - fontRendererObj.getStringWidth(value),
-            panelY + 4, 0xFFFFFFFF);
+        fontRendererObj.drawStringWithShadow(
+            value,
+            panelX + BATCH_PANEL_WIDTH - 6 - fontRendererObj.getStringWidth(value),
+            panelY + 4,
+            0xFFFFFFFF);
         drawScaledString(hint, panelX + 6, panelY + 15, 0xFF9A9A9A, SMALL_TEXT_SCALE);
     }
 
@@ -413,7 +433,8 @@ public class GuiRecipeTree extends GuiScreen {
             TreeRenderer.drawCenteredText(0, sectionBaseY, costTitle, 0xFFFFAA00);
             for (CostEntry cost : costs) {
                 drawCostEntry(cost);
-                if (interactive && worldMouseX >= cost.x - 8 && worldMouseX < cost.x + 16
+                if (interactive && worldMouseX >= cost.x - 8
+                    && worldMouseX < cost.x + 16
                     && worldMouseY >= cost.y
                     && worldMouseY < cost.y + 16) {
                     hoveredCost = cost;
@@ -428,7 +449,8 @@ public class GuiRecipeTree extends GuiScreen {
             TreeRenderer.drawCenteredText(0, remHeaderY, remTitle, 0xFF888888);
             for (CostEntry rem : remainderEntries) {
                 drawCostEntry(rem);
-                if (interactive && worldMouseX >= rem.x - 8 && worldMouseX < rem.x + 16
+                if (interactive && worldMouseX >= rem.x - 8
+                    && worldMouseX < rem.x + 16
                     && worldMouseY >= rem.y
                     && worldMouseY < rem.y + 16) {
                     hoveredCost = rem;
@@ -523,7 +545,9 @@ public class GuiRecipeTree extends GuiScreen {
     }
 
     private void collectVisibleChildNodes(MaterialNode node, Set<MaterialNode> childNodes) {
-        if (node == null || node.children == null || node.children.isEmpty() || node.state != FoldState.EXPANDED
+        if (node == null || node.children == null
+            || node.children.isEmpty()
+            || node.state != FoldState.EXPANDED
             || node.recipe == null) {
             return;
         }
@@ -568,7 +592,8 @@ public class GuiRecipeTree extends GuiScreen {
         if (materialNode.recipe == null && recipeCount > 0) {
             return SELECTABLE_BORDER_COLOR;
         }
-        if (materialNode.recipe != null && materialNode.state == FoldState.COLLAPSED && materialNode.children != null
+        if (materialNode.recipe != null && materialNode.state == FoldState.COLLAPSED
+            && materialNode.children != null
             && !materialNode.children.isEmpty()) {
             return COLLAPSED_BORDER_COLOR;
         }
@@ -639,8 +664,11 @@ public class GuiRecipeTree extends GuiScreen {
 
         GL11.glPushMatrix();
         GL11.glScalef(0.4375F, 0.4375F, 1.0F);
-        TreeRenderer.drawCenteredText((int) ((iconX + TreeNode.RECIPE_ICON_SIZE / 2.0) / 0.4375F),
-            (int) (iconY / 0.4375F), "R", 0xFFCCCCCC);
+        TreeRenderer.drawCenteredText(
+            (int) ((iconX + TreeNode.RECIPE_ICON_SIZE / 2.0) / 0.4375F),
+            (int) (iconY / 0.4375F),
+            "R",
+            0xFFCCCCCC);
         GL11.glPopMatrix();
     }
 
@@ -668,7 +696,11 @@ public class GuiRecipeTree extends GuiScreen {
 
         drawNodeFrame(node, borderColor);
         if (highlightChild && node.width > 2 && TreeNode.FRAME_HEIGHT > 2) {
-            TreeRenderer.drawNodeBorder(x + 1, y + 1, node.width - 2, TreeNode.FRAME_HEIGHT - 2,
+            TreeRenderer.drawNodeBorder(
+                x + 1,
+                y + 1,
+                node.width - 2,
+                TreeNode.FRAME_HEIGHT - 2,
                 brightenColor(borderColor, CHILD_HIGHLIGHT_STRENGTH));
         }
 
@@ -680,14 +712,21 @@ public class GuiRecipeTree extends GuiScreen {
         ItemStack displayStack = getDisplayStack(mn);
         TreeRenderer.drawItemStack(itemIconX, itemIconY, displayStack, getNodeAmountText(node));
         if (highlightItem) {
-            TreeRenderer.drawNodeBorder(itemIconX - 1, itemIconY - 1, TreeNode.ICON_SIZE + 2, TreeNode.ICON_SIZE + 2,
+            TreeRenderer.drawNodeBorder(
+                itemIconX - 1,
+                itemIconY - 1,
+                TreeNode.ICON_SIZE + 2,
+                TreeNode.ICON_SIZE + 2,
                 ITEM_HIGHLIGHT_COLOR);
         }
 
         // Fold/expand indicator
         if (mn.recipe != null && mn.children != null && !mn.children.isEmpty()) {
             String foldText = mn.state == FoldState.COLLAPSED ? "+" : "-";
-            TreeRenderer.drawAmountText(x + node.width - 6, y + 1, foldText,
+            TreeRenderer.drawAmountText(
+                x + node.width - 6,
+                y + 1,
+                foldText,
                 mn.state == FoldState.COLLAPSED ? COLLAPSED_BORDER_COLOR : NODE_BORDER_COLOR);
         } else if (mn.recipe == null && recipeCount > 0) {
             TreeRenderer.drawAmountText(x + node.width - 6, y + 1, "+", SELECTABLE_BORDER_COLOR);
@@ -731,18 +770,18 @@ public class GuiRecipeTree extends GuiScreen {
         if (recipeTooltipRef != recipe) {
             recipeTooltipRef = recipe;
             try {
-                String handlerName = GuiRecipeTab.getHandlerInfo(recipe.handler).getHandlerName();
+                String handlerName = GuiRecipeTab.getHandlerInfo(recipe.handler)
+                    .getHandlerName();
                 codechicken.nei.PositionedStack resultStack = recipe.handler.getResultStack(recipe.recipeIndex);
                 if (resultStack == null) {
-                    for (codechicken.nei.PositionedStack otherStack : recipe.handler.getOtherStacks(recipe.recipeIndex)) {
+                    for (codechicken.nei.PositionedStack otherStack : recipe.handler
+                        .getOtherStacks(recipe.recipeIndex)) {
                         resultStack = otherStack;
                         break;
                     }
                 }
-                Recipe.RecipeId recipeId = Recipe.RecipeId.of(
-                    resultStack,
-                    handlerName,
-                    recipe.handler.getIngredientStacks(recipe.recipeIndex));
+                Recipe.RecipeId recipeId = Recipe.RecipeId
+                    .of(resultStack, handlerName, recipe.handler.getIngredientStacks(recipe.recipeIndex));
                 recipeTooltipHandler = new RecipeTooltipLineHandler(recipeId);
             } catch (Exception e) {
                 recipeTooltipHandler = null;
@@ -823,20 +862,7 @@ public class GuiRecipeTree extends GuiScreen {
             }
 
             if (mouseButton == 0 && hoveredNodeArea == HoverArea.ITEM) {
-                if (isShiftKeyDown()) {
-                    // Shift+LMB: auto-resolve with first available recipe (EMI's getAutoResolutions)
-                    NEIRecipeRef found = RecipeLookup.findFirstRecipe(mn.ingredient);
-                    if (found != null) {
-                        BoM.setResolution(mn.ingredient, found);
-                        recalculateTree();
-                    }
-                } else {
-                    // LMB: open NEI recipe view in resolve mode (EMI's RecipeScreen.resolve)
-                    // User browses recipes, clicks [S] button on desired recipe to select
-                    ItemStack stack = mn.ingredient;
-                    BoM.pendingResolution = stack.copy();
-                    GuiCraftingRecipe.openRecipeGui("item", stack.copy());
-                }
+                beginNodeRecipeSelection(hoveredNode, isShiftKeyDown());
                 return;
             }
 
@@ -857,6 +883,26 @@ public class GuiRecipeTree extends GuiScreen {
             lastMouseY = mouseY;
         }
 
+    }
+
+    private void beginNodeRecipeSelection(TreeNode node, boolean autoResolve) {
+        MaterialNode materialNode = node.materialNode;
+        GuiIngredientChoice.openForNode(materialNode, node.amount, this, selected -> {
+            BoM.selectNodeIngredient(materialNode, selected);
+            ItemStack target = materialNode.ingredient.copy();
+            if (autoResolve) {
+                NEIRecipeRef found = RecipeLookup.findFirstRecipe(target);
+                if (found != null) {
+                    BoM.setResolution(target, found);
+                } else if (BoM.tree != null) {
+                    BoM.tree.recalculate();
+                }
+                mc.displayGuiScreen(new GuiRecipeTree(parentScreen));
+            } else {
+                BoM.pendingResolution = target.copy();
+                GuiCraftingRecipe.openRecipeGui("item", target.copy());
+            }
+        }, () -> mc.displayGuiScreen(this));
     }
 
     @Override
@@ -1060,7 +1106,8 @@ public class GuiRecipeTree extends GuiScreen {
                 framebuffer.deleteFramebuffer();
             }
             if (mc.getFramebuffer() != null) {
-                mc.getFramebuffer().bindFramebuffer(true);
+                mc.getFramebuffer()
+                    .bindFramebuffer(true);
             }
         }
     }
@@ -1113,7 +1160,9 @@ public class GuiRecipeTree extends GuiScreen {
             framebuffer.unbindFramebuffer();
         }
 
-        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(width, height,
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
+            width,
+            height,
             java.awt.image.BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -1227,14 +1276,16 @@ public class GuiRecipeTree extends GuiScreen {
         }
 
         public boolean isMouseOver(int mouseX, int mouseY) {
-            return visible && mouseX >= xPosition && mouseX < xPosition + width
+            return visible && mouseX >= xPosition
+                && mouseX < xPosition + width
                 && mouseY >= yPosition
                 && mouseY < yPosition + height;
         }
 
         private void drawIcon(net.minecraft.client.Minecraft mc, boolean hovered) {
             int iconU = icon == ButtonIcon.BOOKMARK ? 0 : ACTION_BUTTON_SIZE;
-            mc.getTextureManager().bindTexture(BUTTON_ICONS_TEXTURE);
+            mc.getTextureManager()
+                .bindTexture(BUTTON_ICONS_TEXTURE);
             GL11.glEnable(GL11.GL_BLEND);
             OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
             GL11.glColor4f(hovered ? 1.0F : 0.82F, hovered ? 1.0F : 0.82F, hovered ? 1.0F : 0.82F, 1.0F);

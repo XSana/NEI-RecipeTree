@@ -17,6 +17,7 @@ import codechicken.nei.recipe.Recipe.RecipeId;
 import codechicken.nei.recipe.RecipeHandlerRef;
 import moe.takochan.neirecipetree.recipe.ItemStackKey;
 import moe.takochan.neirecipetree.recipe.NEIRecipeRef;
+import moe.takochan.neirecipetree.recipe.RecipeInputKey;
 import moe.takochan.neirecipetree.recipe.RecipeLookup;
 
 public class BoM {
@@ -30,13 +31,44 @@ public class BoM {
     public static Set<ItemStackKey> userExpandedNodes = new HashSet<>();
     /** Tracks the selected recipe index per ingredient for cycling */
     public static Map<ItemStackKey, Integer> recipeIndices = new HashMap<>();
+    /** User-selected permutation for each input slot of a concrete NEI recipe. */
+    public static Map<RecipeInputKey, ItemStackKey> inputSelections = new HashMap<>();
     public static boolean craftingMode = false;
     /** Set when user clicks a tree node to select a recipe from NEI. Cleared after selection. */
     public static ItemStack pendingResolution = null;
 
     public static void setGoal(NEIRecipeRef recipe) {
+        inputSelections.clear();
         tree = new MaterialTree(recipe);
         craftingMode = false;
+    }
+
+    public static ItemStackKey getInputSelection(NEIRecipeRef recipe, int inputIndex) {
+        return inputSelections.get(RecipeInputKey.of(recipe, inputIndex));
+    }
+
+    public static void selectNodeIngredient(MaterialNode node, ItemStack selected) {
+        ItemStackKey selectedKey = ItemStackKey.of(selected);
+        if (selectedKey == null) return;
+        for (RecipeInputKey inputKey : node.sourceInputKeys) {
+            inputSelections.put(inputKey, selectedKey);
+        }
+        ItemStackKey currentKey = ItemStackKey.of(node.ingredient);
+        if (!selectedKey.equals(currentKey)) {
+            node.selectIngredient(selected);
+        }
+    }
+
+    static void clearRecipeState(ItemStack stack) {
+        ItemStackKey key = ItemStackKey.of(stack);
+        if (key == null) return;
+        addedRecipes.remove(key);
+        defaultRecipes.remove(key);
+        recipeIndices.remove(key);
+        userExpandedNodes.remove(key);
+        if (tree != null) {
+            tree.resolutions.remove(key);
+        }
     }
 
     /**
@@ -202,7 +234,8 @@ public class BoM {
      */
     public static void resolveAndReturn(NEIRecipeRef recipe) {
         if (pendingResolution != null && tree != null) {
-            setResolution(pendingResolution, recipe);
+            ItemStack target = pendingResolution.copy();
+            setResolution(target, recipe);
             pendingResolution = null;
             Minecraft mc = net.minecraft.client.Minecraft.getMinecraft();
             mc.displayGuiScreen(new moe.takochan.neirecipetree.gui.GuiRecipeTree(null));
@@ -216,6 +249,7 @@ public class BoM {
         disabledRecipes.clear();
         userExpandedNodes.clear();
         recipeIndices.clear();
+        inputSelections.clear();
         craftingMode = false;
         pendingResolution = null;
         RecipeLookup.clearCache();

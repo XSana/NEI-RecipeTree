@@ -1,3 +1,6 @@
+neirecipetree.ingredient.title=Choose Recipe Ingredient
+neirecipetree.ingredient.amount=Required amount: x%d (one choice applies to all)
+neirecipetree.ingredient.hint=Choose the material before selecting its recipe
 neirecipetree.button.tooltip=View Recipe Tree
 neirecipetree.button.description=Expand all ingredients recursively
 neirecipetree.button.select=Select for Recipe Tree

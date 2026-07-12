@@ -4,7 +4,9 @@ import java.awt.Dimension;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -989,7 +991,11 @@ public class GuiRecipeTree extends GuiScreen {
 
         // Collect all recipes from the tree
         List<codechicken.nei.recipe.Recipe> allRecipes = new ArrayList<>();
-        collectRecipesToExport(BoM.tree.goal, allRecipes, new HashSet<>());
+        // NEI recipe indexes are local to each filtered handler instance. Two different recipes can therefore have
+        // the same handler id and index and compare equal as NEIRecipeRef. Use identity semantics, matching the tree's
+        // cycle detection, so distinct recipe instances are not skipped during export.
+        Set<NEIRecipeRef> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        collectRecipesToExport(BoM.tree.goal, allRecipes, visited);
 
         if (allRecipes.isEmpty()) return;
 

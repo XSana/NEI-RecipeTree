@@ -27,6 +27,7 @@ public class MaterialNode {
     public final ItemStack[] permutations;
     public ItemStack remainder;
     public final List<RecipeInputKey> sourceInputKeys = new ArrayList<>();
+    private final List<Map<ItemStackKey, ItemStack>> sourcePermutationSets = new ArrayList<>();
     public NEIRecipeRef recipe;
     public List<MaterialNode> children;
     public float consumeChance = 1;
@@ -77,7 +78,7 @@ public class MaterialNode {
         }
         this.catalyst = RecipeAdapter.isCatalyst(selected);
         if (sourceInputKey != null) {
-            this.sourceInputKeys.add(sourceInputKey);
+            addSourceInput(ps, sourceInputKey);
         }
         // Catalysts default to collapsed since they are not consumed
         if (this.catalyst) {
@@ -94,6 +95,9 @@ public class MaterialNode {
         this.divisor = node.divisor;
         this.remainderAmount = node.remainderAmount;
         this.sourceInputKeys.addAll(node.sourceInputKeys);
+        for (Map<ItemStackKey, ItemStack> sourcePermutations : node.sourcePermutationSets) {
+            this.sourcePermutationSets.add(copyPermutationSet(sourcePermutations));
+        }
     }
 
     public void recalculate(MaterialTree tree) {
@@ -216,13 +220,13 @@ public class MaterialNode {
 
                 ItemStack inputStack = getSelectedInput(recipeRef, inputIndex, inputPs);
                 if (inputStack == null || inputStack.getItem() == null) continue;
+                RecipeInputKey inputKey = RecipeInputKey.of(recipeRef, inputIndex);
 
                 // Merge duplicate inputs
                 for (MaterialNode existing : children) {
-                    if (ItemStackKey.matches(inputStack, existing.ingredient)
-                        && existing.hasSamePermutations(inputPs)) {
+                    if (ItemStackKey.matches(inputStack, existing.ingredient)) {
                         existing.amount += inputStack.stackSize;
-                        existing.sourceInputKeys.add(RecipeInputKey.of(recipeRef, inputIndex));
+                        existing.addSourceInput(inputPs, inputKey);
                         ItemStack existingRemainder = RecipeAdapter.getContainerItem(inputStack);
                         if (existingRemainder != null) {
                             existing.remainderAmount += existingRemainder.stackSize;
@@ -231,7 +235,7 @@ public class MaterialNode {
                     }
                 }
 
-                MaterialNode child = new MaterialNode(inputPs, inputStack, RecipeInputKey.of(recipeRef, inputIndex));
+                MaterialNode child = new MaterialNode(inputPs, inputStack, inputKey);
                 // Restore fold state from previous children
                 ItemStackKey childKey = ItemStackKey.of(child.ingredient);
                 if (childKey != null && savedFoldStates.containsKey(childKey)) {
@@ -243,32 +247,75 @@ public class MaterialNode {
     }
 
     public List<ItemStack> getUniquePermutations() {
-        Map<ItemStackKey, ItemStack> unique = new LinkedHashMap<>();
-        for (ItemStack candidate : permutations) {
-            ItemStackKey key = ItemStackKey.of(candidate);
-            if (key != null && !unique.containsKey(key)) {
-                unique.put(key, candidate.copy());
+        if (sourcePermutationSets.isEmpty()) {
+            return new ArrayList<>(collectUniquePermutations(permutations).values());
+        }
+
+        List<ItemStack> shared = new ArrayList<>();
+        for (ItemStack candidate : sourcePermutationSets.get(0)
+            .values()) {
+            shared.add(candidate.copy());
+        }
+        for (int i = 1; i < sourcePermutationSets.size(); i++) {
+            Map<ItemStackKey, ItemStack> sourcePermutations = sourcePermutationSets.get(i);
+            shared.removeIf(candidate -> !matchesAny(candidate, sourcePermutations));
+            if (shared.isEmpty()) {
+                break;
             }
         }
-        return new ArrayList<>(unique.values());
+        return shared;
     }
 
     public boolean hasMultiplePermutations() {
         return getUniquePermutations().size() > 1;
     }
 
-    private boolean hasSamePermutations(PositionedStack input) {
-        Map<ItemStackKey, ItemStack> expected = new LinkedHashMap<>();
-        for (ItemStack candidate : input.items) {
+    public ItemStackKey getSelectionKeyForSource(int sourceIndex, ItemStack selected) {
+        if (sourceIndex >= 0 && sourceIndex < sourcePermutationSets.size()) {
+            for (Map.Entry<ItemStackKey, ItemStack> candidate : sourcePermutationSets.get(sourceIndex)
+                .entrySet()) {
+                if (ItemStackKey.matches(selected, candidate.getValue())) {
+                    return candidate.getKey();
+                }
+            }
+        }
+        return ItemStackKey.of(selected);
+    }
+
+    private void addSourceInput(PositionedStack input, RecipeInputKey inputKey) {
+        sourceInputKeys.add(inputKey);
+        sourcePermutationSets.add(collectUniquePermutations(RecipeAdapter.getPermutations(input)));
+    }
+
+    private static Map<ItemStackKey, ItemStack> collectUniquePermutations(ItemStack[] candidates) {
+        Map<ItemStackKey, ItemStack> unique = new LinkedHashMap<>();
+        for (ItemStack candidate : candidates) {
             ItemStackKey key = ItemStackKey.of(candidate);
-            if (key != null) expected.put(key, candidate);
+            if (key != null && !unique.containsKey(key)) {
+                unique.put(key, candidate.copy());
+            }
         }
-        List<ItemStack> current = getUniquePermutations();
-        if (current.size() != expected.size()) return false;
-        for (ItemStack candidate : current) {
-            if (!expected.containsKey(ItemStackKey.of(candidate))) return false;
+        return unique;
+    }
+
+    private static Map<ItemStackKey, ItemStack> copyPermutationSet(Map<ItemStackKey, ItemStack> source) {
+        Map<ItemStackKey, ItemStack> copy = new LinkedHashMap<>();
+        for (Map.Entry<ItemStackKey, ItemStack> candidate : source.entrySet()) {
+            copy.put(
+                candidate.getKey(),
+                candidate.getValue()
+                    .copy());
         }
-        return true;
+        return copy;
+    }
+
+    private static boolean matchesAny(ItemStack selected, Map<ItemStackKey, ItemStack> candidates) {
+        for (ItemStack candidate : candidates.values()) {
+            if (ItemStackKey.matches(selected, candidate)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void selectIngredient(ItemStack selected) {

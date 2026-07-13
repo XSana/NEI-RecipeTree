@@ -87,8 +87,12 @@ public class BoM {
     public static void selectNodeIngredient(MaterialNode node, ItemStack selected) {
         ItemStackKey selectedKey = ItemStackKey.of(selected);
         if (selectedKey == null) return;
-        for (RecipeInputKey inputKey : node.sourceInputKeys) {
-            inputSelections.put(inputKey, selectedKey);
+        for (int sourceIndex = 0; sourceIndex < node.sourceInputKeys.size(); sourceIndex++) {
+            RecipeInputKey inputKey = node.sourceInputKeys.get(sourceIndex);
+            ItemStackKey sourceSelection = node.getSelectionKeyForSource(sourceIndex, selected);
+            if (sourceSelection != null) {
+                inputSelections.put(inputKey, sourceSelection);
+            }
         }
         ItemStackKey currentKey = ItemStackKey.of(node.ingredient);
         if (!selectedKey.equals(currentKey)) {

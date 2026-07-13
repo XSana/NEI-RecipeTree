@@ -38,9 +38,35 @@ public class BoM {
     public static ItemStack pendingResolution = null;
 
     public static void setGoal(NEIRecipeRef recipe) {
-        inputSelections.clear();
-        tree = new MaterialTree(recipe);
+        resetTreeSession();
+        tree = new MaterialTree(getFavoriteRecipeOrDefault(recipe));
         craftingMode = false;
+    }
+
+    private static void resetTreeSession() {
+        tree = null;
+        defaultRecipes.clear();
+        addedRecipes.clear();
+        disabledRecipes.clear();
+        userExpandedNodes.clear();
+        recipeIndices.clear();
+        inputSelections.clear();
+        pendingResolution = null;
+    }
+
+    private static NEIRecipeRef getFavoriteRecipeOrDefault(NEIRecipeRef recipe) {
+        ItemStack output = recipe.getOutput();
+        if (output == null || output.getItem() == null) {
+            for (ItemStack candidate : recipe.getAllOutputs()) {
+                if (candidate != null && candidate.getItem() != null) {
+                    output = candidate;
+                    break;
+                }
+            }
+        }
+
+        NEIRecipeRef favorite = output != null ? findFavoriteRecipe(output) : null;
+        return favorite != null ? favorite : recipe;
     }
 
     public static ItemStackKey getInputSelection(NEIRecipeRef recipe, int inputIndex) {
@@ -84,19 +110,20 @@ public class BoM {
         NEIRecipeRef recipe = addedRecipes.get(key);
         if (recipe != null) return recipe;
 
+        // 2. Check NEI favorite/bookmarked recipes
+        NEIRecipeRef favoriteRecipe = findFavoriteRecipe(stack);
+        if (favoriteRecipe != null && !disabledRecipes.contains(favoriteRecipe)) {
+            defaultRecipes.put(key, favoriteRecipe);
+            return favoriteRecipe;
+        }
+
+        // 3. Reuse a default selected earlier in this tree session.
         recipe = defaultRecipes.get(key);
         if (recipe != null && !disabledRecipes.contains(recipe)) {
             return recipe;
         }
 
-        // 2. Check NEI favorite/bookmarked recipes
-        NEIRecipeRef favoriteRecipe = findFavoriteRecipe(stack);
-        if (favoriteRecipe != null) {
-            defaultRecipes.put(key, favoriteRecipe);
-            return favoriteRecipe;
-        }
-
-        // 3. Auto-resolve only if exactly 1 recipe exists (EMI behavior).
+        // 4. Auto-resolve only if exactly 1 recipe exists (EMI behavior).
         // Multiple recipes → leave as leaf, user must choose.
         List<NEIRecipeRef> found = RecipeLookup.findRecipes(stack);
         if (found.size() == 1) {

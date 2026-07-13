@@ -63,6 +63,8 @@ public class GuiRecipeTree extends GuiScreen {
     private static final int COLLAPSED_BORDER_COLOR = 0xFF6E96E6;
     private static final int SELECTABLE_BORDER_COLOR = 0xFF55FF55;
     private static final int CHANCED_BORDER_COLOR = 0xFFFFAA00;
+    private static final int FAVORITE_MARKER_COLOR = 0xFFFFD54F;
+    private static final float FAVORITE_MARKER_SCALE = 0.65F;
     private static final float TRACE_HIGHLIGHT_STRENGTH = 0.65F;
     private static final float CHILD_HIGHLIGHT_STRENGTH = 0.55F;
     private static final int ITEM_HIGHLIGHT_COLOR = 0xFFF4F0B8;
@@ -476,6 +478,10 @@ public class GuiRecipeTree extends GuiScreen {
         if (mn.catalyst) {
             tooltip.add("\u00a7e" + StatCollector.translateToLocal("neirecipetree.tooltip.catalyst"));
         }
+        if (mn.recipe != null && BoM.isFavoriteRecipeSelection(mn.ingredient)) {
+            tooltip
+                .add("\u00a76\u2605 \u00a7e" + StatCollector.translateToLocal("neirecipetree.tooltip.favorite_recipe"));
+        }
 
         // Show available recipe info
         int recipeCount = RecipeLookup.getRecipeCount(mn.ingredient);
@@ -639,6 +645,7 @@ public class GuiRecipeTree extends GuiScreen {
         int iconY = node.getRecipeIconY();
         TreeRenderer.drawNodeBackground(iconX, iconY, TreeNode.RECIPE_ICON_SIZE, TreeNode.RECIPE_ICON_SIZE, 0xCC101010);
         TreeRenderer.drawNodeBorder(iconX, iconY, TreeNode.RECIPE_ICON_SIZE, TreeNode.RECIPE_ICON_SIZE, borderColor);
+        boolean iconDrawn = false;
         HandlerInfo handlerInfo = GuiRecipeTab.getHandlerInfo(materialNode.recipe.handler);
         if (handlerInfo != null) {
             DrawableResource image = handlerInfo.getImage();
@@ -650,27 +657,45 @@ public class GuiRecipeTree extends GuiScreen {
                 image.draw(0, 0);
                 GL11.glPopMatrix();
                 GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-                return;
+                iconDrawn = true;
             }
 
-            ItemStack stack = handlerInfo.getItemStack();
+            ItemStack stack = !iconDrawn ? handlerInfo.getItemStack() : null;
             if (stack != null) {
                 GL11.glPushMatrix();
                 GL11.glTranslatef(iconX + 1.0F, iconY + 1.0F, 0.0F);
                 GL11.glScalef(0.4375F, 0.4375F, 1.0F);
                 TreeRenderer.drawItemStack(0, 0, stack);
                 GL11.glPopMatrix();
-                return;
+                iconDrawn = true;
             }
         }
 
+        if (!iconDrawn) {
+            GL11.glPushMatrix();
+            GL11.glScalef(0.4375F, 0.4375F, 1.0F);
+            TreeRenderer.drawCenteredText(
+                (int) ((iconX + TreeNode.RECIPE_ICON_SIZE / 2.0) / 0.4375F),
+                (int) (iconY / 0.4375F),
+                "R",
+                0xFFCCCCCC);
+            GL11.glPopMatrix();
+        }
+
+        if (BoM.isFavoriteRecipeSelection(materialNode.ingredient)) {
+            drawFavoriteRecipeMarker(node);
+        }
+    }
+
+    private void drawFavoriteRecipeMarker(TreeNode node) {
+        int markerX = node.getRecipeIconX() + TreeNode.RECIPE_ICON_SIZE - 1;
+        int markerY = node.getRecipeIconY() - 2;
         GL11.glPushMatrix();
-        GL11.glScalef(0.4375F, 0.4375F, 1.0F);
-        TreeRenderer.drawCenteredText(
-            (int) ((iconX + TreeNode.RECIPE_ICON_SIZE / 2.0) / 0.4375F),
-            (int) (iconY / 0.4375F),
-            "R",
-            0xFFCCCCCC);
+        GL11.glTranslatef(markerX, markerY, 1.0F);
+        GL11.glScalef(FAVORITE_MARKER_SCALE, FAVORITE_MARKER_SCALE, 1.0F);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        fontRendererObj.drawStringWithShadow("\u2605", 0, 0, FAVORITE_MARKER_COLOR);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glPopMatrix();
     }
 

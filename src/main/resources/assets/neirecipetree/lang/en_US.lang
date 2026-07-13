@@ -23,6 +23,7 @@ neirecipetree.button.bookmark.tooltip=Add current recipe tree to NEI bookmarks
 neirecipetree.tooltip.recipe=Recipe: %s
 neirecipetree.tooltip.amount=Amount: %d
 neirecipetree.tooltip.catalyst=Catalyst (not consumed)
+neirecipetree.tooltip.favorite_recipe=Automatically selected from NEI favorites
 neirecipetree.tooltip.handler_info=%s (LMB to change, %d types)
 neirecipetree.tooltip.no_recipes=No recipes found
 neirecipetree.tooltip.lmb_select=LMB to browse & select recipe

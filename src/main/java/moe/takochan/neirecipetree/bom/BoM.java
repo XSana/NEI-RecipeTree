@@ -23,6 +23,7 @@ import moe.takochan.neirecipetree.recipe.RecipeLookup;
 public class BoM {
 
     private static final Logger LOG = LogManager.getLogger("neirecipetree");
+    private static final Set<ItemStackKey> FAVORITE_RECIPE_SELECTIONS = new HashSet<>();
 
     public static MaterialTree tree;
     public static Map<ItemStackKey, NEIRecipeRef> defaultRecipes = new HashMap<>();
@@ -49,6 +50,7 @@ public class BoM {
         addedRecipes.clear();
         disabledRecipes.clear();
         userExpandedNodes.clear();
+        FAVORITE_RECIPE_SELECTIONS.clear();
         recipeIndices.clear();
         inputSelections.clear();
         pendingResolution = null;
@@ -66,7 +68,16 @@ public class BoM {
         }
 
         NEIRecipeRef favorite = output != null ? findFavoriteRecipe(output) : null;
+        ItemStackKey outputKey = ItemStackKey.of(output);
+        if (favorite != null && outputKey != null) {
+            FAVORITE_RECIPE_SELECTIONS.add(outputKey);
+        }
         return favorite != null ? favorite : recipe;
+    }
+
+    public static boolean isFavoriteRecipeSelection(ItemStack stack) {
+        ItemStackKey key = ItemStackKey.of(stack);
+        return key != null && FAVORITE_RECIPE_SELECTIONS.contains(key);
     }
 
     public static ItemStackKey getInputSelection(NEIRecipeRef recipe, int inputIndex) {
@@ -90,6 +101,7 @@ public class BoM {
         if (key == null) return;
         addedRecipes.remove(key);
         defaultRecipes.remove(key);
+        FAVORITE_RECIPE_SELECTIONS.remove(key);
         recipeIndices.remove(key);
         userExpandedNodes.remove(key);
         if (tree != null) {
@@ -113,9 +125,11 @@ public class BoM {
         // 2. Check NEI favorite/bookmarked recipes
         NEIRecipeRef favoriteRecipe = findFavoriteRecipe(stack);
         if (favoriteRecipe != null && !disabledRecipes.contains(favoriteRecipe)) {
+            FAVORITE_RECIPE_SELECTIONS.add(key);
             defaultRecipes.put(key, favoriteRecipe);
             return favoriteRecipe;
         }
+        FAVORITE_RECIPE_SELECTIONS.remove(key);
 
         // 3. Reuse a default selected earlier in this tree session.
         recipe = defaultRecipes.get(key);
@@ -156,6 +170,7 @@ public class BoM {
         ItemStackKey key = ItemStackKey.of(stack);
         if (key != null) {
             disabledRecipes.remove(recipe);
+            FAVORITE_RECIPE_SELECTIONS.remove(key);
             addedRecipes.put(key, recipe);
             recalculate();
         }
@@ -165,6 +180,7 @@ public class BoM {
         ItemStackKey key = ItemStackKey.of(stack);
         if (key != null) {
             addedRecipes.remove(key);
+            FAVORITE_RECIPE_SELECTIONS.remove(key);
             disabledRecipes.add(recipe);
             recalculate();
         }
@@ -187,6 +203,7 @@ public class BoM {
                 tree.resolutions.put(key, null);
                 addedRecipes.remove(key);
                 defaultRecipes.remove(key);
+                FAVORITE_RECIPE_SELECTIONS.remove(key);
                 recipeIndices.remove(key);
                 userExpandedNodes.remove(key);
                 tree.recalculate();
@@ -205,6 +222,7 @@ public class BoM {
         }
 
         disabledRecipes.remove(recipe);
+        FAVORITE_RECIPE_SELECTIONS.remove(key);
         addResolution(stack, recipe);
         addedRecipes.put(key, recipe);
     }
@@ -275,6 +293,7 @@ public class BoM {
         addedRecipes.clear();
         disabledRecipes.clear();
         userExpandedNodes.clear();
+        FAVORITE_RECIPE_SELECTIONS.clear();
         recipeIndices.clear();
         inputSelections.clear();
         craftingMode = false;

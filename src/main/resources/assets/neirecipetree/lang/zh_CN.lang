@@ -21,6 +21,7 @@ neirecipetree.batch.tooltip.line2=Ctrl+Alt+滚轮：按 NEI 数量步长调整
 neirecipetree.tooltip.recipe=配方：%s
 neirecipetree.tooltip.amount=数量：%d
 neirecipetree.tooltip.catalyst=催化剂 (不消耗)
+neirecipetree.tooltip.favorite_recipe=已根据 NEI 喜爱配方自动选择
 neirecipetree.tooltip.handler_info=%s (左键更换，共%d种)
 neirecipetree.tooltip.no_recipes=未找到配方
 neirecipetree.tooltip.lmb_select=左键浏览并选择配方

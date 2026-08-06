@@ -8,6 +8,7 @@ import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.oredict.OreDictionary;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,6 +35,8 @@ public class BoM {
     public static Map<ItemStackKey, Integer> recipeIndices = new HashMap<>();
     /** User-selected permutation for each input slot of a concrete NEI recipe. */
     public static Map<RecipeInputKey, ItemStackKey> inputSelections = new HashMap<>();
+    /** Exact item selected as this tree session's representative for an ore-dictionary entry. */
+    private static final Map<Integer, ItemStackKey> ORE_DICTIONARY_SELECTIONS = new HashMap<>();
     public static boolean craftingMode = false;
     /** Set when user clicks a tree node to select a recipe from NEI. Cleared after selection. */
     public static ItemStack pendingResolution = null;
@@ -53,6 +56,7 @@ public class BoM {
         FAVORITE_RECIPE_SELECTIONS.clear();
         recipeIndices.clear();
         inputSelections.clear();
+        ORE_DICTIONARY_SELECTIONS.clear();
         pendingResolution = null;
     }
 
@@ -80,6 +84,14 @@ public class BoM {
         return key != null && FAVORITE_RECIPE_SELECTIONS.contains(key);
     }
 
+    public static boolean hasUsableFavoriteRecipe(ItemStack stack) {
+        if (stack == null || stack.getItem() == null) return false;
+        ItemStack lookupStack = stack.copy();
+        lookupStack.stackSize = 1;
+        NEIRecipeRef favorite = findFavoriteRecipe(lookupStack);
+        return favorite != null && !disabledRecipes.contains(favorite);
+    }
+
     public static ItemStackKey getInputSelection(NEIRecipeRef recipe, int inputIndex) {
         return inputSelections.get(RecipeInputKey.of(recipe, inputIndex));
     }
@@ -94,10 +106,57 @@ public class BoM {
                 inputSelections.put(inputKey, sourceSelection);
             }
         }
+        rememberOreDictionarySelection(
+            selected,
+            node.getUniquePermutations()
+                .toArray(new ItemStack[0]));
         ItemStackKey currentKey = ItemStackKey.of(node.ingredient);
         if (!selectedKey.equals(currentKey)) {
             node.selectIngredient(selected);
         }
+    }
+
+    static ItemStack getPreferredOreDictionaryCandidate(ItemStack[] candidates) {
+        if (candidates == null) return null;
+        for (ItemStack candidate : candidates) {
+            ItemStackKey candidateKey = ItemStackKey.of(candidate);
+            if (candidateKey == null) continue;
+            for (int oreId : OreDictionary.getOreIDs(candidate)) {
+                if (candidateKey.equals(ORE_DICTIONARY_SELECTIONS.get(oreId))) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    static void rememberOreDictionarySelection(ItemStack selected, ItemStack[] candidates) {
+        ItemStackKey selectedKey = ItemStackKey.of(selected);
+        if (selectedKey == null) return;
+
+        for (int oreId : OreDictionary.getOreIDs(selected)) {
+            if (isSharedOreId(oreId, candidates)) {
+                ORE_DICTIONARY_SELECTIONS.put(oreId, selectedKey);
+            }
+        }
+    }
+
+    private static boolean isSharedOreId(int oreId, ItemStack[] candidates) {
+        if (candidates == null || candidates.length == 0) return true;
+        boolean foundCandidate = false;
+        for (ItemStack candidate : candidates) {
+            if (candidate == null || candidate.getItem() == null) continue;
+            foundCandidate = true;
+            boolean foundOreId = false;
+            for (int candidateOreId : OreDictionary.getOreIDs(candidate)) {
+                if (candidateOreId == oreId) {
+                    foundOreId = true;
+                    break;
+                }
+            }
+            if (!foundOreId) return false;
+        }
+        return foundCandidate;
     }
 
     static void clearRecipeState(ItemStack stack) {
@@ -183,9 +242,10 @@ public class BoM {
     public static void removeRecipe(ItemStack stack, NEIRecipeRef recipe) {
         ItemStackKey key = ItemStackKey.of(stack);
         if (key != null) {
-            addedRecipes.remove(key);
-            FAVORITE_RECIPE_SELECTIONS.remove(key);
-            disabledRecipes.add(recipe);
+            clearResolutionState(key);
+            if (recipe != null) {
+                disabledRecipes.add(recipe);
+            }
             recalculate();
         }
     }
@@ -204,14 +264,22 @@ public class BoM {
         if (tree != null) {
             ItemStackKey key = ItemStackKey.of(stack);
             if (key != null) {
-                tree.resolutions.put(key, null);
-                addedRecipes.remove(key);
-                defaultRecipes.remove(key);
-                FAVORITE_RECIPE_SELECTIONS.remove(key);
-                recipeIndices.remove(key);
-                userExpandedNodes.remove(key);
+                clearResolutionState(key);
                 tree.recalculate();
             }
+        }
+    }
+
+    private static void clearResolutionState(ItemStackKey key) {
+        addedRecipes.remove(key);
+        defaultRecipes.remove(key);
+        FAVORITE_RECIPE_SELECTIONS.remove(key);
+        recipeIndices.remove(key);
+        userExpandedNodes.remove(key);
+        if (tree != null) {
+            // A null value is an explicit leaf override. Removing the entry would allow the pinned or
+            // automatically selected recipe to be resolved again during the very next recalculation.
+            tree.resolutions.put(key, null);
         }
     }
 
@@ -300,6 +368,7 @@ public class BoM {
         FAVORITE_RECIPE_SELECTIONS.clear();
         recipeIndices.clear();
         inputSelections.clear();
+        ORE_DICTIONARY_SELECTIONS.clear();
         craftingMode = false;
         pendingResolution = null;
         RecipeLookup.clearCache();

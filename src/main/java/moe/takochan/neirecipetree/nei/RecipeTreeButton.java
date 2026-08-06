@@ -38,7 +38,8 @@ public class RecipeTreeButton extends GuiRecipeButton {
             NEIRecipeRef recipeRef = new NEIRecipeRef(handlerRef.handler, handlerRef.recipeIndex);
             BoM.setGoal(recipeRef);
             Minecraft mc = Minecraft.getMinecraft();
-            mc.displayGuiScreen(new GuiRecipeTree(mc.currentScreen));
+            net.minecraft.client.gui.GuiScreen parent = mc.currentScreen;
+            mc.displayGuiScreen(new GuiRecipeTree(parent));
         } catch (Exception e) {
             LOG.warn("Failed to open recipe tree: {}", e.getMessage());
         }

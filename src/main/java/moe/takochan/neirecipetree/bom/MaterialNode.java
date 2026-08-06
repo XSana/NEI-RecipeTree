@@ -341,12 +341,33 @@ public class MaterialNode {
         if (selected != null) {
             for (ItemStack candidate : input.items) {
                 if (candidate != null && candidate.getItem() != null && selected.equals(ItemStackKey.of(candidate))) {
+                    BoM.rememberOreDictionarySelection(candidate, input.items);
                     return candidate;
                 }
             }
         }
+
+        // When no material was selected manually, prefer a candidate whose recipe is favorited in NEI.
+        // This must happen before choosing the first permutation; otherwise favorites on later candidates
+        // can never become the node ingredient and therefore never get a chance to auto-expand.
+        for (ItemStack candidate : input.items) {
+            if (candidate != null && candidate.getItem() != null && BoM.hasUsableFavoriteRecipe(candidate)) {
+                BoM.rememberOreDictionarySelection(candidate, input.items);
+                return candidate;
+            }
+        }
+
+        // Reuse the exact representative already selected for a shared ore-dictionary entry elsewhere
+        // in this tree. Recipe lookup still uses the concrete ItemStack; only the default choice is
+        // normalized, so unrelated metadata/NBT variants are not globally treated as equal.
+        ItemStack preferred = BoM.getPreferredOreDictionaryCandidate(input.items);
+        if (preferred != null) {
+            return preferred;
+        }
+
         for (ItemStack candidate : input.items) {
             if (candidate != null && candidate.getItem() != null) {
+                BoM.rememberOreDictionarySelection(candidate, input.items);
                 return candidate;
             }
         }

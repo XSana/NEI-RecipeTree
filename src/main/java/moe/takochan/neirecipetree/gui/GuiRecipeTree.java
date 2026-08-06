@@ -870,7 +870,7 @@ public class GuiRecipeTree extends GuiScreen {
                 // RMB: matches EMI exactly
                 if (isShiftKeyDown()) {
                     // Shift+RMB: clear resolution (revert to raw material)
-                    BoM.clearResolution(mn.ingredient);
+                    BoM.removeRecipe(mn.ingredient, mn.recipe);
                     recalculateTree();
                 } else if (mn.recipe != null && mn.children != null && !mn.children.isEmpty()) {
                     // RMB on resolved node: toggle fold/expand
@@ -917,6 +917,19 @@ public class GuiRecipeTree extends GuiScreen {
         GuiIngredientChoice.openForNode(materialNode, node.amount, this, selected -> {
             BoM.selectNodeIngredient(materialNode, selected);
             ItemStack target = materialNode.ingredient.copy();
+
+            // Selecting a material can change the exact item (metadata/NBT) whose recipe needs to be
+            // resolved. Give the normal BoM priority chain the first chance to resolve it so an NEI
+            // favorite (or a unique recipe) expands immediately instead of opening the recipe picker.
+            NEIRecipeRef preferred = BoM.getRecipe(target);
+            if (preferred != null) {
+                if (BoM.tree != null) {
+                    BoM.tree.recalculate();
+                }
+                mc.displayGuiScreen(new GuiRecipeTree(parentScreen));
+                return;
+            }
+
             if (autoResolve) {
                 NEIRecipeRef found = RecipeLookup.findFirstRecipe(target);
                 if (found != null) {

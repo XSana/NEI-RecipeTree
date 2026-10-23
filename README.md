@@ -19,7 +19,7 @@ NEI-RecipeTree is a recipe tree / bill of materials viewer for `NotEnoughItems` 
 - Minecraft：`1.7.10`
 - Forge：`10.13.4.1614`
 - MCP Mapping：`stable_12`
-- 依赖：`NotEnoughItems`
+- 依赖：`NotEnoughItems 2.8.155-GTNH`（本分支针对 GTNH 2.9.0 RC2 的 NEI 接口适配）
 - 语言级别：通过 `Jabel` 使用现代 Java 语法，产物仍为 Java 8 字节码
 
 ### 主要功能
@@ -111,7 +111,7 @@ The goal is not to replace NEI, but to add one more layer on top of the existing
 - Minecraft: `1.7.10`
 - Forge: `10.13.4.1614`
 - MCP mappings: `stable_12`
-- Dependency: `NotEnoughItems`
+- Dependency: `NotEnoughItems 2.8.155-GTNH` (this branch targets the NEI API shipped with GTNH 2.9.0 RC2)
 - Language level: modern Java syntax via `Jabel`, still compiled to Java 8 bytecode
 
 ### Features

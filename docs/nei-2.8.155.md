@@ -22,6 +22,11 @@ checks the integration against that API.
 ./gradlew build
 ```
 
+The legacy GT/AE sample mods used by the development client are opt-in with
+`-PwithGtnhDevMods=true`. They are not needed for the build or regression tests;
+their old transitive dependencies may no longer be available from Maven.
+This option does not affect the mods installed in a player's GTNH instance.
+
 `RecipeTreeButtonHandlerTest` constructs real NEI 2.8.155 events and checks that
 the handler ignores missing recipes, preserves the recipe reference, positions
 buttons using the event dimensions, and leaves existing buttons intact.

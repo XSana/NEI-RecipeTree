@@ -5,9 +5,13 @@ on:
   pull_request:
     branches: [ master, main ]
   push:
-    branches: [ master, main ]
+    branches: [ master, main, fix/nei-2.8.155 ]
 
 jobs:
   build-and-test:
     uses: GTNewHorizons/GTNH-Actions-Workflows/.github/workflows/build-and-test.yml@master
+    with:
+      client-only: true
+      disable-test-comment: true
+      disable-spotless-pr: true
     secrets: inherit

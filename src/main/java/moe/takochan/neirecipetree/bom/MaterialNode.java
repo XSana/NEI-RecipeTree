@@ -12,7 +12,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import codechicken.nei.PositionedStack;
-import moe.takochan.neirecipetree.bom.BoM;
 import moe.takochan.neirecipetree.recipe.ItemStackKey;
 import moe.takochan.neirecipetree.recipe.NEIRecipeRef;
 import moe.takochan.neirecipetree.recipe.RecipeAdapter;

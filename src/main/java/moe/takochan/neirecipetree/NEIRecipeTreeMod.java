@@ -13,7 +13,7 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
     version = Tags.VERSION,
     name = "NEI-RecipeTree",
     acceptedMinecraftVersions = "[1.7.10]",
-    dependencies = "required-after:NotEnoughItems",
+    dependencies = "required-after:NotEnoughItems@[2.8.165-GTNH,)",
     acceptableRemoteVersions = "*")
 public class NEIRecipeTreeMod {
 

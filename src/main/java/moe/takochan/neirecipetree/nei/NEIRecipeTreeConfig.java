@@ -18,12 +18,14 @@ public class NEIRecipeTreeConfig implements IConfigureNEI {
         NEIRecipeTreeMod.LOG.info("NEI-RecipeTree plugin loading");
         MinecraftForge.EVENT_BUS.register(new RecipeTreeButtonHandler());
 
-        NEIClientConfig.global.config.getTag(TAG_BOOKMARK_EXPANDED).getBooleanValue(true);
+        NEIClientConfig.global.config.getTag(TAG_BOOKMARK_EXPANDED)
+            .getBooleanValue(true);
         API.addOption(new OptionToggleButton(TAG_BOOKMARK_EXPANDED, true));
     }
 
     public static boolean isBookmarkExpanded() {
-        return NEIClientConfig.global.config.getTag(TAG_BOOKMARK_EXPANDED).getBooleanValue(true);
+        return NEIClientConfig.global.config.getTag(TAG_BOOKMARK_EXPANDED)
+            .getBooleanValue(true);
     }
 
     @Override

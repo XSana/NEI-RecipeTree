@@ -14,11 +14,11 @@ public class RecipeTreeButtonHandler {
 
     @SubscribeEvent
     public void onRecipeButtons(UpdateRecipeButtonsEvent.Post event) {
-        RecipeHandlerRef handlerRef = event.recipeWidget.getRecipeHandlerRef();
+        RecipeHandlerRef handlerRef = event.handlerRef;
         if (handlerRef == null) return;
 
-        int x = Math.min(168, event.recipeWidget.w) - GuiRecipeButton.BUTTON_WIDTH;
-        int y = event.recipeWidget.h - GuiRecipeButton.BUTTON_HEIGHT - 6;
+        int x = Math.min(168, event.width) - GuiRecipeButton.BUTTON_WIDTH;
+        int y = event.height - GuiRecipeButton.BUTTON_HEIGHT - 6;
         int existingButtons = event.buttonList.size();
         y -= existingButtons * (GuiRecipeButton.BUTTON_HEIGHT + 1);
 
